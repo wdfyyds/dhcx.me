@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Search, Package, Copy, Plus, Trash2, LogIn, LogOut, User, Truck, CheckCircle, AlertCircle, X, Save, ExternalLink, MapPin, Globe, ArrowRight, Zap, ChevronDown, ChevronUp, RefreshCw, Clock, Disc, Settings, Upload, FileText, Share2, CornerUpRight, ClipboardList, PackageCheck, Hourglass, XCircle, Sparkles, Phone, MessageSquare, Menu, Globe2, ShieldCheck, Lock, Download, BarChart2, PieChart, LayoutGrid, List, CheckSquare, Square, Box, ChevronRight, Info, Home, Edit, Clipboard, AlertTriangle, Filter, Smartphone, Image as ImageIcon, Signal, Wifi, Battery, Calendar, Palette, Check, FileSpreadsheet, CreditCard, Layers, Activity, Eye, EyeOff, Play, Pause, Database, FileJson, MoreHorizontal, Volume2, VolumeX, Gift, Sparkle } from 'lucide-react';
+import { Search, Package, Copy, Plus, Trash2, LogIn, LogOut, User, Truck, CheckCircle, AlertCircle, X, Save, ExternalLink, MapPin, Globe, ArrowRight, Zap, ChevronDown, ChevronUp, RefreshCw, Clock, Disc, Settings, Upload, FileText, Share2, CornerUpRight, ClipboardList, PackageCheck, Hourglass, XCircle, Sparkles, Phone, MessageSquare, Menu, Globe2, ShieldCheck, Lock, Download, BarChart2, PieChart, LayoutGrid, List, CheckSquare, Square, Box, ChevronRight, Info, Home, Edit, Clipboard, AlertTriangle, Filter, Smartphone, Image as ImageIcon, Signal, Wifi, Battery, Calendar, Palette, Check, FileSpreadsheet, CreditCard, Layers, Activity, Eye, EyeOff, Play, Pause, Database, FileJson, MoreHorizontal, Volume2, VolumeX, Gift, Sparkle, Type } from 'lucide-react';
 
 // --- 配置区域 (请填写你的 Supabase 信息) ---
 const SUPABASE_URL = "https://vfwgmzsppkdeqccflian.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmd2dtenNwcGtkZXFjY2ZsaWFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0NDQzNTgsImV4cCI6MjA4MDAyMDM1OH0.BeYDz7MeUwNf8LZmd7Ji33JaOeYZ3YnhNCsMjYL46I8"; 
 
-// --- 阿里云 API 默认配置 (不再需要前端 AppCode) ---
+// --- 阿里云 API 默认配置 ---
 const DEFAULT_API_URL = "https://wdexpress.market.alicloudapi.com/gxali";
 
-// --- 核心配置：Local Storage Keys ---
+// --- 核心配置 ---
 const LOCAL_SETTINGS_KEY = 'dhcx.me_settings_v3_production'; 
 
-// --- 通用工具：动态加载脚本 ---
+// --- 通用工具 ---
 const loadScript = (src, globalName) => { 
     return new Promise((resolve, reject) => { 
         if (window[globalName]) { resolve(window[globalName]); return; } 
@@ -24,25 +24,24 @@ const loadScript = (src, globalName) => {
     }); 
 };
 
-// --- 初始化 Supabase 客户端 ---
+// --- 初始化 Supabase ---
 let supabase = null;
 
 const initSupabase = async () => {
     if (supabase) return supabase;
-    if (typeof createClient !== 'undefined') {
-         if (SUPABASE_URL !== "https://your-project.supabase.co") {
-             supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-         }
+    if (typeof window !== 'undefined' && window.supabase) {
+         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
          return supabase;
     }
+    
     try {
         console.log("正在连接 Supabase...");
         const sb = await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', 'supabase');
-        if (sb && sb.createClient && SUPABASE_URL !== "https://your-project.supabase.co") {
+        if (sb && sb.createClient) {
             supabase = sb.createClient(SUPABASE_URL, SUPABASE_KEY);
             console.log("Supabase 连接成功");
         } else {
-            console.warn("Supabase 连接未就绪：请填写 URL 和 Key");
+            console.warn("Supabase 连接未就绪");
         }
     } catch (e) {
         console.error("Supabase 初始化失败:", e);
@@ -67,37 +66,25 @@ const DataService = {
         return { data: data || [], total: count || 0 };
     },
     
-    // [核心逻辑回归] 内部客户模式：严查数据库
     searchPublic: async (queryText) => {
         if (!supabase) throw new Error("系统初始化中，请刷新页面重试"); 
         if (!queryText) return [];
 
         const cleanQuery = queryText.trim().replace(/\s+/g, '');
-        console.log("正在查询数据库:", cleanQuery);
-
-        // 1. 构造复合查询条件
-        // 允许客户输入：运单号 / 完整手机号 / 姓名
+        
         let conditions = `trackingNumber.eq.${cleanQuery},phone.eq.${cleanQuery},recipientName.eq.${cleanQuery}`;
         
-        // 允许客户输入：手机号后四位 (必须是4位以上纯数字才尝试模糊匹配)
         if (/^\d{4,}$/.test(cleanQuery)) {
             conditions += `,phone.like.%${cleanQuery}`;
         }
 
-        // 2. 仅从数据库查询
         const { data, error } = await supabase
             .from('orders')
             .select('*')
             .or(conditions);
         
-        if (error) {
-            console.error("查询错误:", error);
-            throw error;
-        }
+        if (error) throw error;
         
-        // 3. 结果判断
-        // 数据库有 -> 返回数据 -> 前端展示 -> 自动触发 fetchLogistics 查轨迹
-        // 数据库无 -> 返回空数组 -> 前端显示“未查询到信息” -> 流程结束 (不请求阿里云)
         return data || [];
     },
     
@@ -140,7 +127,6 @@ const DataService = {
         const mobileSuffix = phone ? String(phone).replace(/\D/g, '').slice(-4) : '';
         
         try {
-            // 调用 Edge Function (只有当前端 searchPublic 查到数据库有记录时，才会走到这一步)
             const { data, error } = await supabase.functions.invoke('query-logistics', {
                 body: { no: trackingNumber, type: courierCode, mobile: mobileSuffix }
             });
@@ -407,6 +393,9 @@ export default function App() {
     const [isSaving, setIsSaving] = useState(false); 
     const [apiSettings, setApiSettings] = useState(DEFAULT_SETTINGS);
     const [newOrder, setNewOrder] = useState({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' });
+    
+    // 用于处理状态的多重点击计数
+    const statusClickRef = useRef({ count: 0, lastTime: 0 });
 
     const showToast = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
 
@@ -470,7 +459,36 @@ export default function App() {
         }
     }, [fetchAdminOrders, currentView, adminViewMode]);
 
-    // Admin stats calculation (Re-added to ensure it exists)
+    // 处理“当前状态”UI的连续5次点击
+    const handleStatusMultiClick = (e, order) => {
+        e.stopPropagation(); // 阻止事件冒泡
+        
+        const now = Date.now();
+        const record = statusClickRef.current;
+        
+        // 如果两次点击间隔超过 500ms，重置计数
+        if (now - record.lastTime > 500) {
+            record.count = 1;
+        } else {
+            record.count += 1;
+        }
+        record.lastTime = now;
+        
+        // 触发逻辑
+        if (record.count >= 5) {
+            handleQuickCopyReply(order);
+            showToast("话术已复制");
+            
+            // 震动反馈 (如果设备支持)
+            if (navigator.vibrate) {
+                navigator.vibrate(200); 
+            }
+            
+            // 重置计数
+            record.count = 0;
+        }
+    };
+
     const statusCounts = useMemo(() => { 
         const counts = { total: totalOrdersCount || orders.length, '已签收': 0, '派件中': 0, '中转中': 0, '待揽收': 0, '异常件': 0 }; 
         if (orders && Array.isArray(orders)) {
@@ -641,7 +659,6 @@ export default function App() {
 
             console.log("Full API Response:", JSON.stringify(result));
 
-            // [增强] 智能成功判断 (兼容 PascalCase 和其他格式)
             const isSuccess = 
                 (result.code == 200) || 
                 (result.success === true) || 
@@ -654,30 +671,13 @@ export default function App() {
                 (Array.isArray(result.Traces) && result.Traces.length > 0);
 
             if (isSuccess) { 
-                // [增强] 智能提取物流列表
-                // 优先找常见的列表字段
                 let rawList = result.data || result.list || result.traces || result.Traces || result.logisticsTraceDetailList || [];
-                
-                // 兼容嵌套结构 (例如 result.data.list)
-                if (!Array.isArray(rawList) && typeof rawList === 'object') {
-                    rawList = rawList.list || rawList.traces || rawList.Traces || [];
-                }
-                
-                if (!Array.isArray(rawList) || rawList.length === 0) {
-                    // 如果成功了但没列表，可能是刚揽收
-                    rawList = [{ time: Date.now(), status: "暂无详细轨迹，请稍后再试" }];
-                }
-                
-                // [增强] 字段映射
-                const list = rawList.map(item => ({
-                    time: item.time || item.ftime || item.AcceptTime || item.time_stamp || Date.now(),
-                    status: item.status || item.context || item.desc || item.AcceptStation || "未知状态"
-                }));
-                
+                if (!Array.isArray(rawList) && typeof rawList === 'object') { rawList = rawList.list || rawList.traces || rawList.Traces || []; }
+                if (!Array.isArray(rawList) || rawList.length === 0) { rawList = [{ time: Date.now(), status: "暂无详细轨迹，请稍后再试" }]; }
+                const list = rawList.map(item => ({ time: item.time || item.ftime || item.AcceptTime || item.time_stamp || Date.now(), status: item.status || item.context || item.desc || item.AcceptStation || "未知状态" }));
                 setLogisticsDataCache(prev => ({ ...prev, [order.id]: { loading: false, data: list, error: null } }));
             } else { 
-                // [DEBUG] 显示完整返回内容，方便排查
-                const debugMsg = JSON.stringify(result).slice(0, 200); // 截取前200字符
+                const debugMsg = JSON.stringify(result).slice(0, 200); 
                 throw new Error(result.msg || result.reason || result.error || `API返回格式异常: ${debugMsg}`); 
             }
         } catch (error) {
@@ -749,6 +749,8 @@ export default function App() {
                     <div className="md:hidden h-14 bg-black/80 backdrop-blur-md border-b border-white/10 flex justify-between items-center px-4 shrink-0 safe-top">
                         <span className="font-black text-white text-lg">管理面板</span>
                         <div className="flex gap-4 text-white/50">
+                            {/* 手机顶部栏增加退出按钮 */}
+                            <LogOut onClick={handleAdminLogout} size={20} className="text-white/50 hover:text-red-500 transition-colors"/>
                             <Home onClick={() => { setCurrentView('search'); }} size={20} className="active:text-white transition-colors"/>
                             <Settings onClick={() => { setAdminViewMode('settings'); }} size={20} className={adminViewMode==='settings'?'text-[#CCFF00]':'active:text-white'}/>
                         </div>
@@ -831,6 +833,39 @@ export default function App() {
                                         </table>
                                     </div>
                                 </div>
+                                <div className="md:hidden space-y-3">
+                                    {orders.map(order => (
+                                        <div key={order.id} className="bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col gap-3">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                         <div className="text-white font-bold">{order.recipientName}</div>
+                                                         <div className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.bg} ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.color}`}>{getSimplifiedStatus(order.lastApiStatus)}</div>
+                                                    </div>
+                                                    <div className="text-xs text-white/40 mt-1">{order.product}</div>
+                                                </div>
+                                                <div className="text-right">
+                                                     <div className="text-xs font-mono text-white/60">{order.trackingNumber}</div>
+                                                     <div className="text-[10px] text-white/30 mt-1">{order.courier}</div>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-4 gap-2 border-t border-white/5 pt-3 mt-1">
+                                                <button onClick={() => handleShowLogistics(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10">
+                                                    <MapPin size={16}/> <span className="text-[10px]">轨迹</span>
+                                                </button>
+                                                <button onClick={() => handleQuickCopyReply(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-[#CCFF00] hover:bg-white/10">
+                                                    <MessageSquare size={16}/> <span className="text-[10px]">话术</span>
+                                                </button>
+                                                <button onClick={() => handleEditOrderClick(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10">
+                                                    <Edit size={16}/> <span className="text-[10px]">编辑</span>
+                                                </button>
+                                                <button onClick={() => handleDeleteOrderClick(order.id)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20">
+                                                    <Trash2 size={16}/> <span className="text-[10px]">删除</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                                 <div className="p-4 border-t border-white/5 flex flex-col md:flex-row gap-4 justify-between items-center bg-black/20 rounded-xl">
                                     <div className="flex items-center gap-4">
                                         <span className="text-xs text-white/30 font-mono">第 {currentPage} 页 / 共 {totalPages} 页</span>
@@ -838,7 +873,7 @@ export default function App() {
                                             value={itemsPerPage} 
                                             onChange={(e) => { 
                                                 setItemsPerPage(Number(e.target.value)); 
-                                                setCurrentPage(1); // 切换条数时重置到第一页
+                                                setCurrentPage(1); 
                                             }} 
                                             className="bg-black/50 border border-white/10 text-white/60 text-xs rounded-lg px-2 py-1 outline-none focus:border-white/30 cursor-pointer hover:bg-white/5 transition-colors"
                                         >
@@ -855,64 +890,167 @@ export default function App() {
                             </div>
                         )}
                         {adminViewMode === 'settings' && (
-                            <div className="max-w-xl mx-auto animate-in fade-in duration-500">
-                                <div className="bg-white/5 p-6 md:p-8 rounded-2xl border border-white/5 space-y-8 backdrop-blur-xl">
-                                     {/* API Configuration - Only AppCode and URL remain */}
-                                     <div>
-                                        <h4 className="text-xs font-bold text-white/50 uppercase mb-4 flex items-center gap-2 tracking-widest"><Signal size={14}/> API 网关配置</h4>
-                                        <div className="space-y-4">
-                                            <div> <label className="block text-[10px] font-mono text-white/30 uppercase mb-2">阿里云 AppCode (必填)</label> <div className="relative"> <input type={showAppCode ? "text" : "password"} value="********************************" disabled className="w-full p-3 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/40 transition-all text-white/30 font-mono placeholder-white/20 pr-10 cursor-not-allowed" /> </div> <p className="text-[10px] text-white/20 mt-1">* AppCode 已由后端安全托管，前端不可见。</p></div>
-                                            <div> <label className="block text-[10px] font-mono text-white/30 uppercase mb-2">API 网关地址</label> <input value={apiSettings.apiUrl} onChange={e => setApiSettings({...apiSettings, apiUrl: e.target.value})} placeholder="https://wdexpress.market.alicloudapi.com/gxali" className="w-full p-3 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/40 transition-all text-white font-mono placeholder-white/20"/> </div>
-                                        </div>
-                                     </div>
-                                    
-                                    {/* 界面视觉设置 */}
-                                    <div>
-                                        <h4 className="text-xs font-bold text-white/50 uppercase mb-4 flex items-center gap-2 tracking-widest"><Palette size={14}/> 界面视觉设置</h4>
-                                        <div className="grid gap-6">
-                                            <div className="col-span-1"> 
-                                                <label className="block text-[10px] font-mono text-white/30 uppercase mb-2">品牌头像 (URL / 本地上传)</label> 
-                                                <div className="flex items-center gap-4 mb-2"> 
-                                                    <div className="w-16 h-16 rounded-full overflow-hidden border-2 relative z-10 bg-black flex items-center justify-center" style={{ borderColor: apiSettings.themeColor }}> 
-                                                        {apiSettings.logoUrl ? <img key={apiSettings.logoUrl} src={apiSettings.logoUrl} className="w-full h-full object-cover" onError={(e) => {e.target.onerror = null; e.target.style.display = 'none'; e.target.parentNode.classList.add('fallback-active');}} /> : <div className="w-full h-full flex items-center justify-center text-white font-black text-2xl italic">DHCX</div>}
-                                                    </div> 
-                                                    <input 
-                                                        // 如果是 Base64 就不显示在输入框，优先显示远程 URL 链接
-                                                        value={apiSettings.logoUrl && !apiSettings.logoUrl.startsWith('data:image/') ? apiSettings.logoUrl : ''} 
-                                                        onChange={e => setApiSettings({...apiSettings, logoUrl: e.target.value})} 
-                                                        placeholder="远程图片链接" 
-                                                        className="flex-1 p-3 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/40 transition-all text-white font-mono placeholder-white/20"
-                                                    />
+                            <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
+                                <div className="bg-[#111] border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+                                    <div className="px-8 py-6 border-b border-white/5 bg-white/[0.02]">
+                                        <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-3">
+                                            <Settings size={24} className="text-[#CCFF00]" /> 
+                                            系统配置
+                                        </h3>
+                                        <p className="text-xs text-white/40 mt-1 font-mono">自定义您的品牌形象与站点内容</p>
+                                    </div>
+
+                                    <div className="p-6 md:p-8 space-y-8">
+                                        
+                                        <section>
+                                            <h4 className="text-xs font-bold text-white/40 uppercase mb-5 tracking-widest flex items-center gap-2">
+                                                <ImageIcon size={14}/> 品牌识别
+                                            </h4>
+                                            
+                                            <div className="flex flex-col md:flex-row gap-6 items-start">
+                                                <div className="flex flex-col items-center gap-3 shrink-0 mx-auto md:mx-0">
+                                                    <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-dashed border-white/20 relative group bg-black">
+                                                        {apiSettings.logoUrl ? (
+                                                            <img 
+                                                                src={apiSettings.logoUrl} 
+                                                                className="w-full h-full object-cover transition-opacity group-hover:opacity-50" 
+                                                                onError={(e) => {e.target.onerror = null; e.target.style.display = 'none';}} 
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-white/20 font-black text-xl italic">LOGO</div>
+                                                        )}
+                                                        
+                                                        <label htmlFor="local-logo-upload" className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-all duration-200">
+                                                            <Upload size={24} className="text-white drop-shadow-md"/>
+                                                        </label>
+                                                        <input 
+                                                            id="local-logo-upload" 
+                                                            type="file" 
+                                                            accept="image/*" 
+                                                            onChange={handleLogoUpload} 
+                                                            className="hidden" 
+                                                        />
+                                                    </div>
+                                                    <div className="text-[10px] text-white/30 font-mono">点击图片上传</div>
                                                 </div>
-                                                <div className="flex justify-end mt-2">
-                                                    <label htmlFor="local-logo-upload" className="px-3 py-1.5 rounded-lg text-xs font-bold text-black cursor-pointer hover:opacity-80 flex items-center gap-2" style={{ backgroundColor: apiSettings.themeColor }}>
-                                                        <Upload size={14} /> 本地上传头像
-                                                    </label>
-                                                    <input 
-                                                        id="local-logo-upload" 
-                                                        type="file" 
-                                                        accept="image/*" 
-                                                        onChange={handleLogoUpload} 
-                                                        className="hidden" 
-                                                    />
-                                                    {apiSettings.logoUrl && apiSettings.logoUrl.startsWith('data:image/') && (
-                                                        <button 
-                                                            onClick={() => setApiSettings(p => ({...p, logoUrl: ''}))} 
-                                                            className="px-3 py-1.5 ml-2 rounded-lg text-xs font-bold bg-red-900/50 text-red-400 hover:bg-red-900/70 flex items-center gap-2 active:scale-95 transition-transform"
-                                                            title="清除本地 Base64 图片"
-                                                        >
-                                                            <Trash2 size={14} /> 清除本地
-                                                        </button>
-                                                    )}
+
+                                                <div className="flex-1 w-full space-y-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-white/60 mb-1.5 ml-1">网站标题</label>
+                                                        <div className="relative group">
+                                                            <input 
+                                                                value={apiSettings.siteTitle} 
+                                                                onChange={e => setApiSettings({...apiSettings, siteTitle: e.target.value})} 
+                                                                className="w-full h-12 pl-4 pr-4 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:border-[#CCFF00]/50 focus:bg-black transition-all outline-none"
+                                                                placeholder="例如：内部单号查询"
+                                                            />
+                                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#CCFF00] transition-colors">
+                                                                <Type size={16}/>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-white/60 mb-1.5 ml-1">Logo 链接 (可选)</label>
+                                                        <div className="flex gap-2">
+                                                            <input 
+                                                                value={apiSettings.logoUrl && !apiSettings.logoUrl.startsWith('data:image/') ? apiSettings.logoUrl : ''} 
+                                                                onChange={e => setApiSettings({...apiSettings, logoUrl: e.target.value})} 
+                                                                placeholder="https://..." 
+                                                                className="flex-1 h-10 pl-3 pr-3 bg-white/5 border border-white/10 rounded-lg text-xs text-white/80 focus:border-white/30 outline-none font-mono"
+                                                            />
+                                                            {apiSettings.logoUrl && apiSettings.logoUrl.startsWith('data:image/') && (
+                                                                <button 
+                                                                    onClick={() => setApiSettings(p => ({...p, logoUrl: ''}))}
+                                                                    className="px-3 h-10 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg border border-red-500/20 text-xs font-bold transition-colors"
+                                                                >
+                                                                    清除
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div className="col-span-1"> <label className="block text-[10px] font-mono text-white/30 uppercase mb-3">系统主题色</label> <div className="flex flex-wrap gap-3 mb-3"> {THEME_PRESETS.map((theme) => ( <button key={theme.color} onClick={() => { setApiSettings({...apiSettings, themeColor: theme.color}); }} className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-transform hover:scale-110 active:scale-95 ${apiSettings.themeColor === theme.color ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: theme.color }}>{apiSettings.themeColor === theme.color && <Check size={14} className="text-black"/>}</button> ))} </div> </div>
-                                            <div> <label className="block text-[10px] font-mono text-white/30 uppercase mb-2">网站标题</label> <input value={apiSettings.siteTitle} onChange={e => setApiSettings({...apiSettings, siteTitle: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/40 transition-all text-white font-mono placeholder-white/20"/> </div>
-                                            <div> <label className="block text-[10px] font-mono text-white/30 uppercase mb-2">首页公告</label> <textarea value={apiSettings.announcement} onChange={e => setApiSettings({...apiSettings, announcement: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/40 transition-all text-white font-mono placeholder-white/20"/> </div>
-                                        </div>
-                                        <button onClick={saveApiSettings} className="w-full py-4 text-black font-black tracking-widest rounded-lg hover:opacity-90 active:scale-95 transition-all mt-8 text-sm uppercase" style={{ backgroundColor: apiSettings.themeColor }}>{isSaving ? "正在保存..." : "保存全部配置"}</button>
+                                        </section>
+
+                                        <div className="w-full h-px bg-white/5"></div>
+
+                                        <section>
+                                            <h4 className="text-xs font-bold text-white/40 uppercase mb-5 tracking-widest flex items-center gap-2">
+                                                <Palette size={14}/> 主题配色
+                                            </h4>
+                                            <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
+                                                <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+                                                    {THEME_PRESETS.map((theme) => (
+                                                        <button 
+                                                            key={theme.color} 
+                                                            onClick={() => setApiSettings({...apiSettings, themeColor: theme.color})} 
+                                                            className={`group relative w-12 h-12 rounded-xl transition-all duration-300 ${apiSettings.themeColor === theme.color ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-black' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
+                                                            style={{ backgroundColor: theme.color }}
+                                                            title={theme.name}
+                                                        >
+                                                            {apiSettings.themeColor === theme.color && (
+                                                                <div className="absolute inset-0 flex items-center justify-center animate-in zoom-in">
+                                                                    <Check size={20} className="text-black/80 drop-shadow-sm" strokeWidth={3} />
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="mt-4 text-center md:text-left">
+                                                    <span className="text-xs text-white/30 font-mono">当前选择: {THEME_PRESETS.find(t => t.color === apiSettings.themeColor)?.name || apiSettings.themeColor}</span>
+                                                </div>
+                                            </div>
+                                        </section>
+
+                                        <div className="w-full h-px bg-white/5"></div>
+
+                                        <section>
+                                            <h4 className="text-xs font-bold text-white/40 uppercase mb-5 tracking-widest flex items-center gap-2">
+                                                <MessageSquare size={14}/> 首页公告
+                                            </h4>
+                                            <div className="relative">
+                                                <textarea 
+                                                    value={apiSettings.announcement} 
+                                                    onChange={e => setApiSettings({...apiSettings, announcement: e.target.value})} 
+                                                    className="w-full h-32 p-4 bg-white/5 border border-white/10 rounded-xl text-sm text-white/90 leading-relaxed focus:border-[#CCFF00]/50 outline-none resize-none transition-all placeholder-white/20 custom-scrollbar"
+                                                    placeholder="在此输入公告内容，支持换行..."
+                                                />
+                                                <div className="absolute bottom-3 right-3 pointer-events-none">
+                                                    <Edit size={14} className="text-white/20"/>
+                                                </div>
+                                            </div>
+                                        </section>
+
+                                        <button 
+                                            onClick={saveApiSettings} 
+                                            disabled={isSaving}
+                                            className="w-full py-4 rounded-xl font-black tracking-widest text-sm uppercase transition-all transform active:scale-[0.98] hover:brightness-110 flex items-center justify-center gap-2 shadow-lg"
+                                            style={{ backgroundColor: apiSettings.themeColor, color: '#000' }}
+                                        >
+                                            {isSaving ? <RefreshCw size={18} className="animate-spin"/> : <Save size={18}/>}
+                                            {isSaving ? "正在同步..." : "保存并发布"}
+                                        </button>
+
                                     </div>
                                 </div>
+
+                                <div className="md:hidden mt-6 grid grid-cols-2 gap-4">
+                                    <button 
+                                        onClick={() => setCurrentView('search')} 
+                                        className="py-4 bg-white/5 border border-white/10 rounded-2xl text-white/80 font-bold text-sm flex flex-col items-center justify-center gap-2 hover:bg-white/10 active:scale-95 transition-all"
+                                    >
+                                        <Eye size={20} className="text-[#CCFF00]"/> 预览前台
+                                    </button>
+                                    <button 
+                                        onClick={handleAdminLogout} 
+                                        className="py-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 font-bold text-sm flex flex-col items-center justify-center gap-2 hover:bg-red-500/20 active:scale-95 transition-all"
+                                    >
+                                        <LogOut size={20}/> 退出登录
+                                    </button>
+                                </div>
+                                
+                                <div className="h-12 md:hidden"></div>
                             </div>
                         )}
                     </div>
@@ -951,8 +1089,11 @@ export default function App() {
                 <TiltCard className="w-full relative z-20 group mt-8"><div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-1.5 flex gap-2 shadow-2xl"><form onSubmit={handleSearch} className="flex-1"><input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="请输入姓名/手机号（含后四位）/单号" className="w-full h-12 pl-4 pr-4 bg-transparent text-white placeholder-white/30 font-mono text-sm outline-none" inputMode="text"/></form><button onClick={handleSearch} className="h-12 px-6 rounded-lg font-bold text-black hover:brightness-110 active:scale-95 transition-all" style={{ backgroundColor: apiSettings.themeColor }}>查询</button></div></TiltCard>
             </div>
             <div className="relative z-10 px-6 pb-20 flex-1">
+                {/* 移动最近查询记录到公告上方 */}
+                {!hasSearched && getSearchHistory().length > 0 && (<div className="mb-6 animate-in fade-in slide-in-from-bottom-4"><div className="flex justify-between items-end mb-3"><span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">最近查询</span><button onClick={clearSearchHistory} className="text-white/20 hover:text-red-500 p-2"><Trash2 size={12}/></button></div><div className="flex flex-wrap gap-2">{getSearchHistory().map((h, i) => (<button key={i} onClick={() => { setSearchQuery(h); handleSearch(null, h); }} className="px-3 py-1.5 border border-white/10 bg-white/5 rounded text-[10px] font-mono text-white/60 hover:bg-white/10 hover:text-white active:scale-95 transition-transform">{h}</button>))}</div></div>)}
+                
                 {(apiSettings.announcement && !hasSearched) && (<div className="mb-6 p-4 rounded-lg border border-white/10 bg-black/20 backdrop-blur-md"><div className="flex items-center gap-2 mb-2"><Zap size={12} style={{ color: apiSettings.themeColor }} className="animate-pulse"/><span className="text-[10px] font-bold uppercase tracking-widest text-white/50">公告</span></div><p className="text-xs text-white/80 font-mono leading-loose"><Typewriter text={apiSettings.announcement} /></p></div>)}
-                {!hasSearched && (<div className="animate-in fade-in slide-in-from-bottom-4"><div className="flex justify-between items-end mb-3"><span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">最近查询</span><button onClick={clearSearchHistory} className="text-white/20 hover:text-red-500 p-2"><Trash2 size={12}/></button></div><div className="flex flex-wrap gap-2">{getSearchHistory().map((h, i) => (<button key={i} onClick={() => { setSearchQuery(h); handleSearch(null, h); }} className="px-3 py-1.5 border border-white/10 bg-white/5 rounded text-[10px] font-mono text-white/60 hover:bg-white/10 hover:text-white active:scale-95 transition-transform">{h}</button>))}</div></div>)}
+                
                 {hasSearched && searchResult && searchResult.length > 0 && (
                     <div className="animate-in slide-in-from-bottom-10 duration-700 ease-out">
                        {(() => {
@@ -974,14 +1115,23 @@ export default function App() {
                                             <div className={`absolute -right-4 -bottom-4 w-48 h-48 opacity-20 ${statusStyle.color} rotate-[-10deg] transition-all duration-500`}><StatusIllustration className="w-full h-full" /></div>
                                             <div className="p-4 relative z-10">
                                                 <div className="flex justify-between items-end mb-3">
-                                                    <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">当前状态</div> <div className={`flex items-center gap-2 px-2 py-1 rounded border backdrop-blur-md ${statusStyle.bg} ${statusStyle.border} ${statusStyle.glow} transition-all duration-500`}> <statusStyle.icon size={14} className={statusStyle.color}/> <span className={`text-xs font-bold uppercase tracking-wider ${statusStyle.color}`}>{statusKey}</span> </div> </div>
+                                                    <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">当前状态</div> 
+                                                    {/* 新增：点击当前状态 UI 复制话术 (需连击5次) */}
+                                                    <div 
+                                                        className={`flex items-center gap-2 px-2 py-1 rounded border backdrop-blur-md ${statusStyle.bg} ${statusStyle.border} ${statusStyle.glow} transition-all duration-500 cursor-pointer hover:brightness-110 active:scale-95 select-none`}
+                                                        onClick={(e) => handleStatusMultiClick(e, dbOrder)}
+                                                        title="点击5次复制回复话术"
+                                                    > 
+                                                        <statusStyle.icon size={14} className={statusStyle.color}/> <span className={`text-xs font-bold uppercase tracking-wider ${statusStyle.color}`}>{statusKey}</span> 
+                                                    </div> 
+                                                    </div>
                                                     <div className="text-right relative z-20"> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">快递公司</div> <div className="text-sm font-bold" style={{ color: apiSettings.themeColor }}>{dbOrder.courier}</div> </div>
                                                 </div>
                                                 <div className="space-y-2">
                                                     {apiSettings.showProduct && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">商品名称</div> <div className="text-base font-bold break-words leading-snug relative z-20" style={{ color: apiSettings.themeColor }}>{dbOrder.product}</div> </div> )}
                                                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/10">
                                                         {apiSettings.showRecipient && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">收件人</div> <div className="flex items-center gap-2"> <div className="text-sm font-bold text-white">{isNameMasked ? (dbOrder.recipientName ? dbOrder.recipientName[0] + '*'.repeat(Math.max(0, dbOrder.recipientName.length - 1)) : '***') : dbOrder.recipientName}</div> <button onClick={() => setIsNameMasked(!isNameMasked)} className="text-white/30 hover:text-white transition-colors p-1"><Eye size={12}/></button> </div> </div> )}
-                                                        <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">运单号</div> <div className="flex items-center gap-2"> <span className="text-sm font-mono text-white/80">{dbOrder.trackingNumber}</span> <button onClick={() => copyToClipboard(dbOrder.trackingNumber)} className="text-white/40 hover:text-white transition-colors relative z-20 p-1" title="复制单号"><Copy size={12}/></button> <div className="w-px h-3 bg-white/10 mx-1"></div> <button onClick={() => handleQuickCopyReply(dbOrder)} className="text-[#CCFF00] hover:text-white transition-colors relative z-20 p-1" title="复制话术"><MessageSquare size={12}/></button> </div> </div>
+                                                        <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">运单号</div> <div className="flex items-center gap-2"> <span className="text-sm font-mono text-white/80">{dbOrder.trackingNumber}</span> <button onClick={() => copyToClipboard(dbOrder.trackingNumber)} className="text-white/40 hover:text-white transition-colors relative z-20 p-1" title="复制单号"><Copy size={12}/></button> <div className="w-px h-3 bg-white/10 mx-1"></div> </div> </div>
                                                     </div>
                                                 </div>
                                             </div>
