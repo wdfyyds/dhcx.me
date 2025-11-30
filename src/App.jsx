@@ -24,6 +24,26 @@ const loadScript = (src, globalName) => {
     }); 
 };
 
+// --- 安全编码工具 (Base64 URL Safe) ---
+// 替换之前的 Base62，兼容性更好，支持含字母的单号
+const encodeToken = (str) => {
+    try {
+        return btoa(encodeURIComponent(str)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    } catch (e) {
+        return str;
+    }
+};
+
+const decodeToken = (str) => {
+    try {
+        str = str.replace(/-/g, '+').replace(/_/g, '/');
+        while (str.length % 4) str += '=';
+        return decodeURIComponent(atob(str));
+    } catch (e) {
+        return str; // 如果解码失败，直接返回原字符串（兼容明文查询）
+    }
+};
+
 // --- 初始化 Supabase ---
 let supabase = null;
 
@@ -399,10 +419,12 @@ export default function App() {
 
     const showToast = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
 
+    // --- 核心初始化与自动查询逻辑 ---
     useEffect(() => {
         const initialize = async () => {
             const sb = await initSupabase();
             if (sb) {
+                // 加载配置
                 const remoteSettings = await DataService.getSiteConfig();
                 if (remoteSettings && Object.keys(remoteSettings).length > 0) {
                     setApiSettings(prev => ({ ...prev, ...remoteSettings }));
@@ -415,9 +437,12 @@ export default function App() {
                         }
                     } catch (e) { console.error(e); }
                 }
+                
+                // 检查登录状态
                 const { data: { session } } = await sb.auth.getSession();
                 setIsAdmin(!!session);
                 if (session) fetchAdminOrders();
+                
                 sb.auth.onAuthStateChange((_event, session) => {
                     setIsAdmin(!!session);
                     if (session) {
@@ -427,13 +452,26 @@ export default function App() {
                         setCurrentView('search'); 
                     }
                 });
+
+                // --- 自动查询逻辑 (URL 参数) ---
+                // 必须在 Supabase 初始化完成后执行
+                const params = new URLSearchParams(window.location.search);
+                const q = params.get('q');
+                if (q) {
+                    const decodedQuery = decodeToken(q); // 尝试解码，如果是明文也兼容
+                    if (decodedQuery) {
+                        setSearchQuery(decodedQuery);
+                        // 自动触发查询
+                        handleSearch(null, decodedQuery); 
+                    }
+                }
             } else {
                 console.warn("Supabase SDK 未能加载");
             }
             setLoading(false);
         };
         initialize();
-    }, []);
+    }, []); // 仅在组件挂载时执行
 
     const fetchAdminOrders = useCallback(async () => {
         setLoading(true);
@@ -699,9 +737,17 @@ export default function App() {
             if (sortedData.length > 0) { realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; } 
         } 
         const statusSimple = getSimplifiedStatus(realTimeStatus); 
-        let safeToken; 
-        if (order.phone && order.phone.trim().length > 0) { safeToken = toBase62(order.phone.replace(/\D/g, '')); } 
-        else { safeToken = toBase62(order.trackingNumber); } 
+        
+        // --- 核心修改：生成 Base64 短链接 Token ---
+        // 优先使用手机号（纯数字），如果没有手机号或含字母，则使用单号
+        let queryValue = order.trackingNumber;
+        if (order.phone && /^\d+$/.test(order.phone)) {
+            queryValue = order.phone.replace(/\D/g, '');
+        }
+        
+        // 生成 URL Safe 的 Base64 Token
+        const safeToken = encodeToken(queryValue);
+        
         const queryLink = `https://dhcx.me?q=${safeToken}`; 
         let templateKey = 'TRANSPORT'; 
         if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; 
