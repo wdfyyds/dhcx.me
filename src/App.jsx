@@ -58,7 +58,8 @@ const decodeToken = (str) => {
 
 // --- [新增] 短链生成工具 ---
 const generateShortCode = (length = 5) => {
-    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; // 去除易混淆字符 0,1,I,l,O
+    // 包含大写、小写、数字，去除了易混淆的 0, 1, I, l, O
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; 
     let result = '';
     for (let i = 0; i < length; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -117,7 +118,7 @@ const DataService = {
         // 2. 如果不存在，生成新的 (尝试最多3次以防冲突)
         let attempts = 0;
         while (attempts < 3) {
-            const code = generateShortCode(5); // 5位短码
+            const code = generateShortCode(5); // 5位短码，包含大小写
             const { error: insertError } = await supabase
                 .from('short_urls')
                 .insert([{ id: code, original_query: queryText }]);
@@ -586,15 +587,28 @@ export default function App() {
                     }
                 });
 
+                // --- [升级] 短链解析逻辑 (支持 ?s=xxx, ?q=xxx 和 /xxx) ---
                 const params = new URLSearchParams(window.location.search);
+                const queryShortCode = params.get('s');
+                const queryOldToken = params.get('q');
                 
-                // --- [新增] 短链解析逻辑 ---
-                const shortCode = params.get('s');
-                const q = params.get('q');
+                // 获取路径中的短码 (移除开头的 /)
+                const pathShortCode = window.location.pathname.slice(1);
                 
-                if (shortCode) {
-                    // 如果有 s 参数，去数据库换取原始查询串
-                    DataService.resolveShortLink(shortCode).then(originalQuery => {
+                let targetShortCode = null;
+
+                // 优先检查路径 (例如 /ydiA2)，排除普通文件扩展名 (例如 /favicon.ico) 和空路径
+                if (pathShortCode && pathShortCode.length >= 4 && !pathShortCode.includes('.')) {
+                    targetShortCode = pathShortCode;
+                } 
+                // 其次检查查询参数 (?s=ydiA2)
+                else if (queryShortCode) {
+                    targetShortCode = queryShortCode;
+                }
+
+                if (targetShortCode) {
+                    // 去数据库换取原始查询串
+                    DataService.resolveShortLink(targetShortCode).then(originalQuery => {
                         if (originalQuery) {
                             setSearchQuery(originalQuery);
                             handleSearch(null, originalQuery);
@@ -602,9 +616,9 @@ export default function App() {
                             showToast("短链已失效或不存在", "error");
                         }
                     });
-                } else if (q) {
-                    // 旧版逻辑保持不变
-                    const decodedQuery = decodeToken(q); 
+                } else if (queryOldToken) {
+                    // 旧版 base64 逻辑保持不变
+                    const decodedQuery = decodeToken(queryOldToken); 
                     if (decodedQuery) { 
                         setSearchQuery(decodedQuery);
                         handleSearch(null, decodedQuery); 
@@ -933,21 +947,24 @@ export default function App() {
         } 
         const statusSimple = getSimplifiedStatus(realTimeStatus); 
         
-        let queryValue = order.trackingNumber;
-        if (order.phone && /^\d+$/.test(order.phone)) {
-            queryValue = order.phone.replace(/\D/g, '');
-        }
+        // --- 核心修改：强制使用单号生成短链 ---
+        // 无论是否有手机号，都使用运单号作为查询参数
+        let queryValue = order.trackingNumber.trim();
+        // 原来的手机号判断逻辑已移除
 
         let queryLink;
         try {
             // 尝试获取数据库短链
             const shortCode = await DataService.getOrCreateShortLink(queryValue);
-            queryLink = `https://dhcx.me?s=${shortCode}`;
+            
+            // [修改] 链接格式改为 dhcx.me/ydiA2 (需要服务器配置 Rewrite)
+            queryLink = `https://dhcx.me/${shortCode}`;
         } catch (e) {
             // 降级方案：如果数据库生成失败，使用旧的 base64 token
             // [修复] 使用 warn 而不是 error，避免误导
             console.warn("短链生成失败，自动降级为长链接:", e.message);
             const safeToken = encodeToken(queryValue);
+            // 降级方案只能用 ?q= 格式，因为 base64 包含 / 符号且太长，不适合做路径
             queryLink = `https://dhcx.me?q=${safeToken}`; 
         }
 
