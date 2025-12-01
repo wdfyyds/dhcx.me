@@ -431,6 +431,8 @@ export default function App() {
     const clickTimeoutRef = useRef(null);
     const [adminSearchQuery, setAdminSearchQuery] = useState('');
     const [isSaving, setIsSaving] = useState(false); 
+    // 新增：导入加载状态
+    const [isImporting, setIsImporting] = useState(false);
     const [apiSettings, setApiSettings] = useState(DEFAULT_SETTINGS);
     const [newOrder, setNewOrder] = useState({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' });
     
@@ -634,31 +636,45 @@ export default function App() {
     
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
-        const lines = importText.replace(/"/g, '').trim().replace(/\r/g, '').split('\n'); let newOrdersData = [];
-        lines.forEach((line, index) => { 
-            if (!line.trim() || (index === 0 && line.includes('单号'))) return; 
-            const parts = line.replace(/，/g, ',').replace(/\t/g, ' ').split(/[,，\s]+/).filter(p => p.trim().length > 0); 
-            if (parts.length >= 2) { 
-                let phone = '', trackingNumber = '', courier = '', recipientName = '', product = ''; 
-                const phoneIndex = parts.findIndex(p => /^1[3-9]\d{9}$/.test(p)); if (phoneIndex !== -1) { phone = parts[phoneIndex]; parts.splice(phoneIndex, 1); }
-                const trackingIndex = parts.findIndex(p => /[a-zA-Z0-9]{9,}/.test(p) && !/^1[3-9]\d{9}$/.test(p)); if (trackingIndex !== -1) { trackingNumber = parts[trackingIndex]; parts.splice(trackingIndex, 1); }
-                const courierIndex = parts.findIndex(p => /快递|速运|物流|EMS|顺丰|圆通|中通|申通|韵达|极兔/.test(p)); if (courierIndex !== -1) { courier = parts[courierIndex]; parts.splice(courierIndex, 1); }
-                if (parts.length > 0) { recipientName = parts[0]; if (parts.length > 1) product = parts.slice(1).join(' '); }
-                if (trackingNumber) { 
-                     let finalCourier = courier || autoDetectCourier(trackingNumber); if (courier && !/快递|速运|物流|EMS/.test(courier)) finalCourier += '快递';
-                     const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`; 
-                     newOrdersData.push({ id: orderId, recipientName: recipientName || '未知', phone: phone || '', product: product || '商品', courier: finalCourier, trackingNumber, note: '导入', timestamp: Date.now() - index, lastUpdated: Date.now() }); 
+        
+        // 开启加载状态
+        setIsImporting(true);
+        
+        // 使用 setTimeout 让 React 有机会先渲染 Loading UI，避免解析大数据时立即卡顿
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        try {
+            const lines = importText.replace(/"/g, '').trim().replace(/\r/g, '').split('\n'); let newOrdersData = [];
+            lines.forEach((line, index) => { 
+                if (!line.trim() || (index === 0 && line.includes('单号'))) return; 
+                const parts = line.replace(/，/g, ',').replace(/\t/g, ' ').split(/[,，\s]+/).filter(p => p.trim().length > 0); 
+                if (parts.length >= 2) { 
+                    let phone = '', trackingNumber = '', courier = '', recipientName = '', product = ''; 
+                    const phoneIndex = parts.findIndex(p => /^1[3-9]\d{9}$/.test(p)); if (phoneIndex !== -1) { phone = parts[phoneIndex]; parts.splice(phoneIndex, 1); }
+                    const trackingIndex = parts.findIndex(p => /[a-zA-Z0-9]{9,}/.test(p) && !/^1[3-9]\d{9}$/.test(p)); if (trackingIndex !== -1) { trackingNumber = parts[trackingIndex]; parts.splice(trackingIndex, 1); }
+                    const courierIndex = parts.findIndex(p => /快递|速运|物流|EMS|顺丰|圆通|中通|申通|韵达|极兔/.test(p)); if (courierIndex !== -1) { courier = parts[courierIndex]; parts.splice(courierIndex, 1); }
+                    if (parts.length > 0) { recipientName = parts[0]; if (parts.length > 1) product = parts.slice(1).join(' '); }
+                    if (trackingNumber) { 
+                        let finalCourier = courier || autoDetectCourier(trackingNumber); if (courier && !/快递|速运|物流|EMS/.test(courier)) finalCourier += '快递';
+                        const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`; 
+                        newOrdersData.push({ id: orderId, recipientName: recipientName || '未知', phone: phone || '', product: product || '商品', courier: finalCourier, trackingNumber, note: '导入', timestamp: Date.now() - index, lastUpdated: Date.now() }); 
+                    } 
                 } 
-            } 
-        });
-        if (newOrdersData.length > 0) { 
-            try { 
+            });
+            if (newOrdersData.length > 0) { 
                 await DataService.batchSaveOrders(newOrdersData);
                 showToast(`成功导入 ${newOrdersData.length} 条数据！`); 
                 setImportText(''); setShowImportModal(false); 
                 fetchAdminOrders(); 
-            } catch (e) { showToast("导入失败: " + String(e.message), "error"); } 
-        } else { showToast("未识别到有效数据", "error"); }
+            } else { 
+                showToast("未识别到有效数据", "error"); 
+            }
+        } catch (e) { 
+            showToast("导入失败: " + String(e.message), "error"); 
+        } finally {
+            // 无论成功失败，关闭加载状态
+            setIsImporting(false);
+        }
     };
 
     const handleSaveOrder = async () => { 
@@ -1150,7 +1166,24 @@ export default function App() {
                             <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl text-white">批量导入</h3><button onClick={()=>setShowImportModal(false)} className="text-white/40 hover:text-white p-2"><X size={24}/></button></div>
                             <div className="mb-6 p-4 border border-dashed border-white/20 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] transition-colors relative group"><input type="file" accept=".csv,.txt,.xls,.xlsx" onChange={handleImportFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/><div className="flex flex-col items-center justify-center py-4 text-center"><FileSpreadsheet size={32} className="text-white/40 mb-3 group-hover:text-white transition-colors"/><p className="text-sm font-bold text-white mb-1">上传 Excel / CSV</p><p className="text-[10px] font-mono text-white/30">点击或拖拽上传</p></div></div>
                             <textarea value={importText} onChange={e=>setImportText(e.target.value)} className="w-full h-40 bg-black border border-white/10 rounded-xl p-4 text-xs text-white/70 mb-6" placeholder="或者直接粘贴文本数据..." />
-                            <div className="flex gap-3"><button onClick={()=>setShowImportModal(false)} className="flex-1 py-3 bg-white/5 text-white/60 rounded-lg text-xs font-bold hover:bg-white/10">取消</button><button onClick={handleBatchImport} className="flex-1 py-3 text-black rounded-lg text-xs font-bold hover:opacity-90 active:scale-95 transition-transform" style={{ backgroundColor: apiSettings.themeColor }}>处理数据</button></div>
+                            <div className="flex gap-3">
+                                <button onClick={()=>setShowImportModal(false)} disabled={isImporting} className="flex-1 py-3 bg-white/5 text-white/60 rounded-lg text-xs font-bold hover:bg-white/10 disabled:opacity-50">取消</button>
+                                <button 
+                                    onClick={handleBatchImport} 
+                                    disabled={isImporting}
+                                    className={`flex-1 py-3 text-black rounded-lg text-xs font-bold hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 ${isImporting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                    style={{ backgroundColor: apiSettings.themeColor }}
+                                >
+                                    {isImporting ? (
+                                        <>
+                                            <RefreshCw size={14} className="animate-spin"/>
+                                            <span>正在处理...</span>
+                                        </>
+                                    ) : (
+                                        "处理数据"
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
