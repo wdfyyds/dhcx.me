@@ -57,8 +57,6 @@ const decodeToken = (str) => {
         return decodeURIComponent(escape(atob(base64)));
     } catch (e) {
         console.warn("解码失败:", e);
-        // 如果解码彻底失败，为了不让用户看到乱码，返回空字符串让用户自己输，或者尝试返回原串
-        // 这里返回 null 表示解码无效
         return null; 
     }
 };
@@ -144,6 +142,12 @@ const DataService = {
     deleteOrders: async (ids) => {
         if (!supabase) throw new Error("数据库未连接");
         const { error } = await supabase.from('orders').delete().in('id', ids);
+        if (error) throw error;
+    },
+    // 新增：清空所有订单 (保留 timestamp > 0 的判断作为安全措施)
+    deleteAllOrders: async () => {
+        if (!supabase) throw new Error("数据库未连接");
+        const { error } = await supabase.from('orders').delete().gt('timestamp', 0);
         if (error) throw error;
     },
     login: async (email, password) => {
@@ -572,6 +576,35 @@ export default function App() {
         }
     };
 
+    const handleClearAllClick = () => {
+         setConfirmModal({ type: 'clear_all' });
+    };
+
+    // 合并后的 executeDelete 函数
+    const executeDelete = async () => { 
+        if (!confirmModal) return; 
+        try {
+            if (confirmModal.type === 'clear_all') {
+                await DataService.deleteAllOrders();
+                setOrders([]);
+                setTotalOrdersCount(0);
+                showToast("所有订单已清空");
+            } else {
+                // 这里是单个删除或批量删除的逻辑
+                let ordersToDelete = []; 
+                if (confirmModal.type === 'batch') { ordersToDelete = Array.from(selectedOrders); } 
+                else if (confirmModal.id) { ordersToDelete = [confirmModal.id]; } 
+                await DataService.deleteOrders(ordersToDelete);
+                setSelectedOrders(new Set());
+                showToast("删除成功"); 
+                fetchAdminOrders();
+            }
+            setConfirmModal(null); 
+        } catch (e) {
+            showToast("操作失败: " + String(e.message), "error");
+        }
+    };
+
     const statusCounts = useMemo(() => { 
         const counts = { total: totalOrdersCount || orders.length, '已签收': 0, '派件中': 0, '中转中': 0, '待揽收': 0, '异常件': 0 }; 
         if (orders && Array.isArray(orders)) {
@@ -636,7 +669,8 @@ export default function App() {
     
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
-        const lines = importText.trim().replace(/\r/g, '').split('\n'); let newOrdersData = [];
+        // 自动过滤掉双引号 "
+        const lines = importText.replace(/"/g, '').trim().replace(/\r/g, '').split('\n'); let newOrdersData = [];
         lines.forEach((line, index) => { 
             if (!line.trim() || (index === 0 && line.includes('单号'))) return; 
             const parts = line.replace(/，/g, ',').replace(/\t/g, ' ').split(/[,，\s]+/).filter(p => p.trim().length > 0); 
@@ -679,22 +713,6 @@ export default function App() {
     const handleDeleteOrderClick = (id) => { setConfirmModal({ type: 'single', id }); };
     const handleBatchDeleteClick = () => { if (selectedOrders.size === 0) return; setConfirmModal({ type: 'batch', count: selectedOrders.size }); };
     
-    const executeDelete = async () => { 
-        if (!confirmModal) return; 
-        let ordersToDelete = []; 
-        if (confirmModal.type === 'batch') { ordersToDelete = Array.from(selectedOrders); } 
-        else if (confirmModal.id) { ordersToDelete = [confirmModal.id]; } 
-        try {
-            await DataService.deleteOrders(ordersToDelete);
-            setSelectedOrders(new Set());
-            setConfirmModal(null); 
-            showToast("删除成功"); 
-            fetchAdminOrders();
-        } catch (e) {
-            showToast("删除失败: " + String(e.message), "error");
-        }
-    };
-
     const handleEditOrderClick = (order) => { setNewOrder(order); setIsEditing(true); setShowEditModal(true); };
     const handleTrackingNumberChange = (e) => { const val = e.target.value; setNewOrder(p => ({...p, trackingNumber: val, courier: autoDetectCourier(val)})); };
     const toggleSelection = (id) => { const newSet = new Set(selectedOrders); newSet.has(id) ? newSet.delete(id) : newSet.add(id); setSelectedOrders(newSet); };
@@ -1123,6 +1141,28 @@ export default function App() {
                                             {isSaving ? "正在同步..." : "保存并发布"}
                                         </button>
 
+                                        <div className="w-full h-px bg-white/5"></div>
+
+                                        <section>
+                                            <h4 className="text-xs font-bold text-red-500/50 uppercase mb-5 tracking-widest flex items-center gap-2">
+                                                <AlertTriangle size={14}/> 危险区域
+                                            </h4>
+                                            <div className="bg-red-500/5 rounded-2xl p-5 border border-red-500/10">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <div className="text-sm font-bold text-red-400">清空所有订单数据</div>
+                                                        <div className="text-xs text-red-400/50 mt-1">此操作将永久删除所有客户订单信息，不可恢复。</div>
+                                                    </div>
+                                                    <button 
+                                                        onClick={handleClearAllClick}
+                                                        className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-lg text-xs font-bold transition-colors"
+                                                    >
+                                                        立即清空
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </section>
+
                                     </div>
                                 </div>
 
@@ -1163,7 +1203,16 @@ export default function App() {
                 )}
                 {viewingLogisticsOrder && (<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4"><div className="bg-[#111] w-full max-w-md rounded-2xl overflow-hidden border border-white/10 shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"><div className="p-5 border-b border-white/10 flex justify-between items-center bg-white/[0.02]"><div><div className="text-white font-bold text-lg mb-1">{viewingLogisticsOrder.recipientName}</div><div className="text-xs font-mono text-white/40">{viewingLogisticsOrder.trackingNumber}</div></div><button onClick={() => setViewingLogisticsOrder(null)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><X size={18}/></button></div><div className="flex-1 overflow-y-auto p-0 custom-scrollbar bg-black"><LogisticsTimeline order={viewingLogisticsOrder} logisticsDataCache={logisticsDataCache} themeColor={apiSettings.themeColor} /></div></div></div>)}
                 {showEditModal && (<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4"><div className="bg-[#111] w-full max-w-lg rounded-2xl p-6 md:p-8 border border-white/10 shadow-2xl animate-in zoom-in-95 duration-200"><div className="flex justify-between items-center mb-8"><h3 className="font-bold text-xl text-white">编辑订单</h3><button onClick={() => setShowEditModal(false)} className="p-2"><X size={24} className="text-white/40"/></button></div><div className="grid grid-cols-2 gap-4 md:gap-5 mb-8"><input value={newOrder.recipientName} onChange={e => setNewOrder({...newOrder, recipientName: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="收件人"/><input value={newOrder.phone} onChange={e => setNewOrder({...newOrder, phone: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="手机号"/><input value={newOrder.trackingNumber} onChange={handleTrackingNumberChange} className="col-span-2 w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="运单号"/></div><div className="flex gap-3 justify-end"><button onClick={handleSaveOrder} className="px-6 py-3 text-black rounded-lg font-bold active:scale-95 transition-transform" style={{ backgroundColor: apiSettings.themeColor }}>保存</button></div></div></div>)}
-                {confirmModal && (<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4"><div className="bg-[#111] w-full max-w-sm rounded-2xl p-8 border border-white/10 shadow-2xl text-center animate-in zoom-in-95 duration-200"><AlertTriangle size={32} className="text-red-500 mx-auto mb-6"/><h3 className="text-xl font-bold text-white mb-2">确认删除?</h3><div className="text-white/50 text-sm mb-6">{confirmModal.type === 'batch' ? `您即将删除 ${confirmModal.count} 条记录。` : '此操作不可撤销。'}</div><div className="flex gap-3 mt-8"><button onClick={() => setConfirmModal(null)} className="flex-1 py-3 bg-white/5 text-white rounded-lg active:scale-95 transition-transform">取消</button><button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-lg active:scale-95 transition-transform">删除</button></div></div></div>)}
+                {confirmModal && (<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4"><div className="bg-[#111] w-full max-w-sm rounded-2xl p-8 border border-white/10 shadow-2xl text-center animate-in zoom-in-95 duration-200"><AlertTriangle size={32} className="text-red-500 mx-auto mb-6"/><h3 className="text-xl font-bold text-white mb-2">
+                    {confirmModal.type === 'clear_all' ? '确定清空所有数据?' : '确认删除?'}
+                </h3><div className="text-white/50 text-sm mb-6">
+                    {confirmModal.type === 'clear_all' 
+                        ? '此操作将永久删除所有订单记录，且无法恢复！' 
+                        : (confirmModal.type === 'batch' ? `您即将删除 ${confirmModal.count} 条记录。` : '此操作不可撤销。')
+                    }
+                </div><div className="flex gap-3 mt-8"><button onClick={() => setConfirmModal(null)} className="flex-1 py-3 bg-white/5 text-white rounded-lg active:scale-95 transition-transform">取消</button><button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-lg active:scale-95 transition-transform">
+                    {confirmModal.type === 'clear_all' ? '确认清空' : '删除'}
+                </button></div></div></div>)}
             </div>
         );
     }
