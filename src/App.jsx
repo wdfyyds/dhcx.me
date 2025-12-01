@@ -656,14 +656,20 @@ export default function App() {
                     if (parts.length > 0) { recipientName = parts[0]; if (parts.length > 1) product = parts.slice(1).join(' '); }
                     if (trackingNumber) { 
                         let finalCourier = courier || autoDetectCourier(trackingNumber); if (courier && !/快递|速运|物流|EMS/.test(courier)) finalCourier += '快递';
-                        const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`; 
+                        
+                        // --- 修改开始：使用运单号作为 ID，防止重复 ---
+                        // 原代码：const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`; 
+                        // 修改后：直接使用 trackingNumber 作为 id。Supabase upsert 会检测 ID 是否存在，存在则更新，不存在则插入。
+                        const orderId = trackingNumber.trim();
+                        // --- 修改结束 ---
+
                         newOrdersData.push({ id: orderId, recipientName: recipientName || '未知', phone: phone || '', product: product || '商品', courier: finalCourier, trackingNumber, note: '导入', timestamp: Date.now() - index, lastUpdated: Date.now() }); 
                     } 
                 } 
             });
             if (newOrdersData.length > 0) { 
                 await DataService.batchSaveOrders(newOrdersData);
-                showToast(`成功导入 ${newOrdersData.length} 条数据！`); 
+                showToast(`成功处理 ${newOrdersData.length} 条数据！(已自动去重)`); 
                 setImportText(''); setShowImportModal(false); 
                 fetchAdminOrders(); 
             } else { 
@@ -680,7 +686,11 @@ export default function App() {
     const handleSaveOrder = async () => { 
         if (!isAdmin || !newOrder.trackingNumber) { showToast("无权限或信息不全", "error"); return; } 
         try { 
-            const id = isEditing ? newOrder.id : `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`; 
+            // --- 修改开始：手动录入也使用运单号作为 ID 防重 ---
+            // 如果是编辑模式，使用原 ID；如果是新增模式，使用运单号作为 ID
+            const id = isEditing ? newOrder.id : newOrder.trackingNumber.trim(); 
+            // --- 修改结束 ---
+
             const updatedOrder = { ...newOrder, id };
             await DataService.saveOrder(updatedOrder);
             showToast(isEditing ? "修改成功" : "录入成功"); 
