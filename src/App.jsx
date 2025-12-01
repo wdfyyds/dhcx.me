@@ -109,7 +109,7 @@ const DataService = {
             .from('orders')
             .select('*')
             .or(conditions)
-            .order('timestamp', { ascending: false }); // --- 修复：强制倒序排列 ---
+            .order('timestamp', { ascending: false });
         if (error) throw error;
         return data || [];
     },
@@ -138,6 +138,55 @@ const DataService = {
         const { error } = await supabase.from('orders').delete().gt('timestamp', 0);
         if (error) throw error;
     },
+    
+    // --- [新增功能] 数据去重 ---
+    removeDuplicates: async () => {
+        if (!supabase) throw new Error("数据库未连接");
+        
+        // 1. 获取所有订单的关键信息，按时间倒序排列（确保最新的在前面）
+        const { data, error } = await supabase
+            .from('orders')
+            .select('id, trackingNumber, timestamp')
+            .order('timestamp', { ascending: false });
+            
+        if (error) throw error;
+        if (!data || data.length === 0) return 0;
+
+        const seenTrackingNumbers = new Set();
+        const idsToDelete = [];
+
+        // 2. 遍历数据，找出重复项
+        data.forEach(item => {
+            const tn = item.trackingNumber ? item.trackingNumber.trim() : null;
+            if (!tn) return; // 跳过无单号数据
+            
+            if (seenTrackingNumbers.has(tn)) {
+                // 如果已经见过这个单号，说明当前这条是旧数据（因为我们是倒序遍历的）
+                idsToDelete.push(item.id);
+            } else {
+                // 第一次见到这个单号，标记为已见（这是最新的一条，保留）
+                seenTrackingNumbers.add(tn);
+            }
+        });
+
+        // 3. 批量删除旧数据
+        if (idsToDelete.length > 0) {
+            // 分批删除，防止 URL 过长
+            const BATCH_SIZE = 100;
+            for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+                const batch = idsToDelete.slice(i, i + BATCH_SIZE);
+                const { error: delError } = await supabase
+                    .from('orders')
+                    .delete()
+                    .in('id', batch);
+                if (delError) throw delError;
+            }
+        }
+
+        return idsToDelete.length;
+    },
+    // --- 结束 ---
+
     login: async (email, password) => {
         if (!supabase) throw new Error("数据库未连接");
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -434,6 +483,9 @@ export default function App() {
     const [isSaving, setIsSaving] = useState(false); 
     // 新增：导入加载状态
     const [isImporting, setIsImporting] = useState(false);
+    // --- [第二段] 新增：去重加载状态 ---
+    const [isDeduplicating, setIsDeduplicating] = useState(false);
+    
     const [apiSettings, setApiSettings] = useState(DEFAULT_SETTINGS);
     const [newOrder, setNewOrder] = useState({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' });
     
@@ -543,6 +595,30 @@ export default function App() {
          setSecurityCodeInput(''); 
          setConfirmModal({ type: 'clear_all' });
     };
+    
+    // --- [第二段] 新增：一键去重处理函数 ---
+    const handleDeduplicate = async () => {
+        if (!isAdmin) return;
+        if (!window.confirm("⚠️ 确定要执行去重操作吗？\n\n系统将检查所有订单，对于重复的运单号，仅保留【最后一次上传/更新】的记录，删除旧记录。\n\n此操作不可恢复！")) {
+            return;
+        }
+
+        setIsDeduplicating(true);
+        try {
+            const count = await DataService.removeDuplicates();
+            if (count > 0) {
+                showToast(`去重成功！已清理 ${count} 条重复数据`, "success");
+                fetchAdminOrders(); // 刷新列表
+            } else {
+                showToast("未发现重复运单", "success");
+            }
+        } catch (e) {
+            showToast("去重失败: " + String(e.message), "error");
+        } finally {
+            setIsDeduplicating(false);
+        }
+    };
+    // --- [第二段] 结束 ---
 
     // 合并后的 executeDelete 函数
     const executeDelete = async () => { 
@@ -635,13 +711,12 @@ export default function App() {
 
     const handleImportFileChange = async (e) => { const file = e.target.files[0]; if (!file) return; if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) { showToast("正在加载 Excel 解析引擎...", "success"); try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX'); const reader = new FileReader(); reader.onload = (event) => { const data = new Uint8Array(event.target.result); const workbook = window.XLSX.read(data, { type: 'array', cellDates: true }); const text = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]], { FS: " " }); setImportText(text); showToast(`Excel 解析成功！${text.split('\n').length} 行`, "success"); }; reader.readAsArrayBuffer(file); } catch (err) { showToast("解析引擎加载失败", "error"); } return; } const reader = new FileReader(); reader.onload = (event) => { setImportText(event.target.result); showToast("文件读取成功", "success"); }; reader.readAsText(file); };
     
+    // --- [核心修复] 批量导入函数：增加去重逻辑 ---
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
         
-        // 开启加载状态
         setIsImporting(true);
-        
-        // 使用 setTimeout 让 React 有机会先渲染 Loading UI，避免解析大数据时立即卡顿
+        // 使用 setTimeout 让 React 有机会先渲染 Loading UI
         await new Promise(resolve => setTimeout(resolve, 100));
 
         try {
@@ -658,19 +733,35 @@ export default function App() {
                     if (trackingNumber) { 
                         let finalCourier = courier || autoDetectCourier(trackingNumber); if (courier && !/快递|速运|物流|EMS/.test(courier)) finalCourier += '快递';
                         
-                        // --- 修改开始：使用运单号作为 ID，防止重复 ---
-                        // 原代码：const orderId = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`; 
-                        // 修改后：直接使用 trackingNumber 作为 id。Supabase upsert 会检测 ID 是否存在，存在则更新，不存在则插入。
+                        // 使用运单号作为 ID
                         const orderId = trackingNumber.trim();
-                        // --- 修改结束 ---
-
                         newOrdersData.push({ id: orderId, recipientName: recipientName || '未知', phone: phone || '', product: product || '商品', courier: finalCourier, trackingNumber, note: '导入', timestamp: Date.now() - index, lastUpdated: Date.now() }); 
                     } 
                 } 
             });
+
             if (newOrdersData.length > 0) { 
-                await DataService.batchSaveOrders(newOrdersData);
-                showToast(`成功处理 ${newOrdersData.length} 条数据！(已自动去重)`); 
+                // --- 修复开始：提交前去重 ---
+                // 解决 'ON CONFLICT DO UPDATE command cannot affect row a second time' 错误
+                const uniqueMap = new Map();
+                // 遍历数据，后出现的重复项会覆盖先出现的，保留最后一条
+                newOrdersData.forEach(item => {
+                    if (item.id) {
+                        uniqueMap.set(item.id, item);
+                    }
+                });
+                const uniqueOrdersData = Array.from(uniqueMap.values());
+                const removedCount = newOrdersData.length - uniqueOrdersData.length;
+                // --- 修复结束 ---
+
+                await DataService.batchSaveOrders(uniqueOrdersData);
+                
+                let msg = `成功处理 ${uniqueOrdersData.length} 条数据！`;
+                if (removedCount > 0) {
+                    msg += ` (自动过滤了 ${removedCount} 条本次重复数据)`;
+                }
+                showToast(msg); 
+                
                 setImportText(''); setShowImportModal(false); 
                 fetchAdminOrders(); 
             } else { 
@@ -679,10 +770,10 @@ export default function App() {
         } catch (e) { 
             showToast("导入失败: " + String(e.message), "error"); 
         } finally {
-            // 无论成功失败，关闭加载状态
             setIsImporting(false);
         }
     };
+    // --- [核心修复] 结束 ---
 
     const handleSaveOrder = async () => { 
         if (!isAdmin || !newOrder.trackingNumber) { showToast("无权限或信息不全", "error"); return; } 
@@ -839,12 +930,14 @@ export default function App() {
                     <div className="md:hidden h-14 bg-black/80 backdrop-blur-md border-b border-white/10 flex justify-between items-center px-4 shrink-0 safe-top">
                         <span className="font-black text-white text-lg">管理面板</span>
                         <div className="flex gap-4 text-white/50">
+                            <Filter onClick={handleDeduplicate} size={20} className={`active:text-white transition-colors ${isDeduplicating ? 'animate-pulse text-[#CCFF00]' : ''}`}/>
                             <LogOut onClick={handleAdminLogout} size={20} className="text-white/50 hover:text-red-500 transition-colors"/>
                             <Home onClick={() => { setCurrentView('search'); }} size={20} className="active:text-white transition-colors"/>
                             <Settings onClick={() => { setAdminViewMode('settings'); }} size={20} className={adminViewMode==='settings'?'text-[#CCFF00]':'active:text-white'}/>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-auto p-4 md:p-8 custom-scrollbar pb-24 md:pb-8 safe-bottom">
+                    {/* --- [核心修复] 增加底部 padding (pb-40) 以避免手机端底部导航栏遮挡内容 --- */}
+                    <div className="flex-1 overflow-auto p-4 md:p-8 custom-scrollbar pb-40 md:pb-8">
                         {adminViewMode === 'dashboard' && (
                             <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 animate-in fade-in duration-500">
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
@@ -869,7 +962,29 @@ export default function App() {
                             <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 animate-in fade-in duration-500">
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/5 p-4 md:p-6 rounded-2xl border border-white/5 backdrop-blur-sm sticky top-0 z-20">
                                     <div className="flex justify-between w-full md:w-auto items-center"> <div className="flex items-center gap-3"> <div><h2 className="text-2xl md:text-3xl font-black text-white tracking-tight mb-1">订单管理</h2><p className="text-[10px] font-mono text-white/40 uppercase tracking-widest">共 {totalOrdersCount} 条记录</p></div> <button onClick={() => setIsAdminMasked(!isAdminMasked)} className="text-white/30 hover:text-white transition-colors p-2 rounded-full hover:bg-white/10" title={isAdminMasked ? "显示敏感信息" : "隐藏敏感信息"}> {isAdminMasked ? <EyeOff size={20}/> : <Eye size={20}/>} </button> </div> <button onClick={() => setShowImportModal(true)} className="md:hidden w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><Plus size={18}/></button> </div>
-                                    <div className="flex flex-col gap-3 w-full md:w-auto"> <div className="flex gap-2 w-full md:w-auto"> <div className="relative flex-1 md:w-48"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} /><input type="text" placeholder="搜索..." value={adminSearchQuery} onChange={(e) => setAdminSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/30 text-white placeholder-white/20 transition-all"/></div> <button onClick={() => setShowImportModal(true)} className="hidden md:flex px-4 py-2.5 text-black rounded-lg text-xs font-bold hover:opacity-80 items-center gap-2 shrink-0" style={{ backgroundColor: apiSettings.themeColor }}><Upload size={14} /> 导入</button> {selectedOrders.size > 0 && (<button onClick={handleBatchDeleteClick} className="px-3 py-2.5 bg-red-900/50 text-red-400 border border-red-900 rounded-lg text-xs font-bold hover:bg-red-900/80"><Trash2 size={14}/></button>)} </div> </div>
+                                    <div className="flex flex-col gap-3 w-full md:w-auto"> 
+                                        <div className="flex gap-2 w-full md:w-auto"> 
+                                            <div className="relative flex-1 md:w-48">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} />
+                                                <input type="text" placeholder="搜索..." value={adminSearchQuery} onChange={(e) => setAdminSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/30 text-white placeholder-white/20 transition-all"/>
+                                            </div> 
+                                            
+                                            {/* --- [第三段] 新增：PC端一键去重按钮 --- */}
+                                            <button 
+                                                onClick={handleDeduplicate} 
+                                                disabled={isDeduplicating}
+                                                className="hidden md:flex px-4 py-2.5 bg-white/5 border border-white/10 text-white/70 hover:text-white rounded-lg text-xs font-bold hover:bg-white/10 items-center gap-2 shrink-0 disabled:opacity-50 transition-all"
+                                                title="保留最新上传的记录，删除重复旧项"
+                                            >
+                                                {isDeduplicating ? <RefreshCw size={14} className="animate-spin"/> : <Filter size={14} />} 
+                                                {isDeduplicating ? "处理中" : "去重"}
+                                            </button>
+                                            {/* --- [第三段] 结束 --- */}
+                                            
+                                            <button onClick={() => setShowImportModal(true)} className="hidden md:flex px-4 py-2.5 text-black rounded-lg text-xs font-bold hover:opacity-80 items-center gap-2 shrink-0" style={{ backgroundColor: apiSettings.themeColor }}><Upload size={14} /> 导入</button> 
+                                            {selectedOrders.size > 0 && (<button onClick={handleBatchDeleteClick} className="px-3 py-2.5 bg-red-900/50 text-red-400 border border-red-900 rounded-lg text-xs font-bold hover:bg-red-900/80"><Trash2 size={14}/></button>)} 
+                                        </div> 
+                                    </div>
                                 </div>
                                 <div className="hidden md:block bg-white/5 rounded-2xl border border-white/5 overflow-hidden backdrop-blur-sm">
                                     <div className="overflow-x-auto">
