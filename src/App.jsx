@@ -58,8 +58,7 @@ const decodeToken = (str) => {
 
 // --- [新增] 短链生成工具 ---
 const generateShortCode = (length = 5) => {
-    // 包含大写、小写、数字，去除了易混淆的 0, 1, I, l, O
-    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; 
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; // 去除易混淆字符 0,1,I,l,O
     let result = '';
     for (let i = 0; i < length; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -118,7 +117,7 @@ const DataService = {
         // 2. 如果不存在，生成新的 (尝试最多3次以防冲突)
         let attempts = 0;
         while (attempts < 3) {
-            const code = generateShortCode(5); // 5位短码，包含大小写
+            const code = generateShortCode(5); // 5位短码
             const { error: insertError } = await supabase
                 .from('short_urls')
                 .insert([{ id: code, original_query: queryText }]);
@@ -587,28 +586,15 @@ export default function App() {
                     }
                 });
 
-                // --- [升级] 短链解析逻辑 (支持 ?s=xxx, ?q=xxx 和 /xxx) ---
                 const params = new URLSearchParams(window.location.search);
-                const queryShortCode = params.get('s');
-                const queryOldToken = params.get('q');
                 
-                // 获取路径中的短码 (移除开头的 /)
-                const pathShortCode = window.location.pathname.slice(1);
+                // --- [新增] 短链解析逻辑 ---
+                const shortCode = params.get('s');
+                const q = params.get('q');
                 
-                let targetShortCode = null;
-
-                // 优先检查路径 (例如 /ydiA2)，排除普通文件扩展名 (例如 /favicon.ico) 和空路径
-                if (pathShortCode && pathShortCode.length >= 4 && !pathShortCode.includes('.')) {
-                    targetShortCode = pathShortCode;
-                } 
-                // 其次检查查询参数 (?s=ydiA2)
-                else if (queryShortCode) {
-                    targetShortCode = queryShortCode;
-                }
-
-                if (targetShortCode) {
-                    // 去数据库换取原始查询串
-                    DataService.resolveShortLink(targetShortCode).then(originalQuery => {
+                if (shortCode) {
+                    // 如果有 s 参数，去数据库换取原始查询串
+                    DataService.resolveShortLink(shortCode).then(originalQuery => {
                         if (originalQuery) {
                             setSearchQuery(originalQuery);
                             handleSearch(null, originalQuery);
@@ -616,9 +602,9 @@ export default function App() {
                             showToast("短链已失效或不存在", "error");
                         }
                     });
-                } else if (queryOldToken) {
-                    // 旧版 base64 逻辑保持不变
-                    const decodedQuery = decodeToken(queryOldToken); 
+                } else if (q) {
+                    // 旧版逻辑保持不变
+                    const decodedQuery = decodeToken(q); 
                     if (decodedQuery) { 
                         setSearchQuery(decodedQuery);
                         handleSearch(null, decodedQuery); 
@@ -865,7 +851,50 @@ export default function App() {
     const handleTrackingNumberChange = (e) => { const val = e.target.value; setNewOrder(p => ({...p, trackingNumber: val, courier: autoDetectCourier(val)})); };
     const toggleSelection = (id) => { const newSet = new Set(selectedOrders); newSet.has(id) ? newSet.delete(id) : newSet.add(id); setSelectedOrders(newSet); };
     const toggleSelectAll = () => { const newSet = new Set(); if (selectedOrders.size !== orders.length) orders.forEach(o => newSet.add(o.id)); setSelectedOrders(newSet); };
-    const copyToClipboard = (text) => { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); showToast("复制成功"); } catch (e) {} document.body.removeChild(t); };
+    
+    // --- [修复] 强化版复制功能 (兼容手机端异步复制) ---
+    const copyToClipboard = async (text) => {
+        // 优先使用 Clipboard API (现代浏览器/HTTPS)
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast("复制成功");
+                return;
+            } catch (err) {
+                console.warn("Clipboard API 失败, 尝试降级方案:", err);
+            }
+        }
+        
+        // 降级方案: createTextRange / execCommand (旧版兼容/非HTTPS环境)
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            
+            // 确保元素不可见但可被选中，防止页面跳动
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            textArea.style.opacity = "0";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            if (successful) {
+                showToast("复制成功");
+            } else {
+                throw new Error("execCommand 返回 false");
+            }
+        } catch (err) {
+            console.error("所有复制手段均失败:", err);
+            showToast("复制失败，请手动长按复制", "error");
+            // 最后的保底：弹出 prompt 让用户复制
+            // window.prompt("请长按复制内容:", text); 
+        }
+    };
     
     const handleAdminLogin = async (e) => { 
         e.preventDefault(); 
@@ -950,22 +979,20 @@ export default function App() {
         // --- 核心修改：强制使用单号生成短链 ---
         // 无论是否有手机号，都使用运单号作为查询参数
         let queryValue = order.trackingNumber.trim();
-        // 原来的手机号判断逻辑已移除
 
         let queryLink;
         try {
             // 尝试获取数据库短链
             const shortCode = await DataService.getOrCreateShortLink(queryValue);
             
-            // [修改] 链接格式改为 dhcx.me/ydiA2 (需要服务器配置 Rewrite)
-            queryLink = `https://dhcx.me/${shortCode}`;
+            // [修改] 链接格式改为 dhcx.me?s=xxxxx (去掉了 https://)
+            // 注意：为了保证链接能被浏览器正确识别参数，保留了 ?s= 格式，但移除了协议头
+            queryLink = `dhcx.me?s=${shortCode}`;
         } catch (e) {
-            // 降级方案：如果数据库生成失败，使用旧的 base64 token
-            // [修复] 使用 warn 而不是 error，避免误导
+            // 降级方案
             console.warn("短链生成失败，自动降级为长链接:", e.message);
             const safeToken = encodeToken(queryValue);
-            // 降级方案只能用 ?q= 格式，因为 base64 包含 / 符号且太长，不适合做路径
-            queryLink = `https://dhcx.me?q=${safeToken}`; 
+            queryLink = `dhcx.me?q=${safeToken}`; 
         }
 
         let templateKey = 'TRANSPORT'; 
@@ -976,7 +1003,8 @@ export default function App() {
         let message = DEFAULT_TEMPLATES[templateKey]; 
         message = message.replace(/{name}/g, order.recipientName || '客户').replace(/{product}/g, order.product || '商品').replace(/{courier}/g, order.courier).replace(/{no}/g, order.trackingNumber).replace(/{link}/g, queryLink).replace(/{status}/g, realTimeStatus || statusSimple); 
         
-        copyToClipboard(message);
+        // 调用增强版复制函数
+        await copyToClipboard(message);
         if (navigator.vibrate) navigator.vibrate(200);
     };
     const handleShowLogistics = (order) => { setViewingLogisticsOrder(order); fetchLogistics(order); };
@@ -1130,7 +1158,10 @@ export default function App() {
                                             <div className="flex justify-between items-start">
                                                 <div>
                                                     <div className="flex items-center gap-2">
-                                                         <div className="text-white font-bold">{order.recipientName}</div>
+                                                         {/* [修复] 手机端应用掩码逻辑 */}
+                                                         <div className="text-white font-bold">
+                                                            {isAdminMasked ? (order.recipientName?.[0] + '*'.repeat(Math.max(0, (order.recipientName?.length || 0) - 1))) : order.recipientName}
+                                                         </div>
                                                          <div className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.bg} ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.color}`}>{getSimplifiedStatus(order.lastApiStatus)}</div>
                                                     </div>
                                                     <div 
@@ -1142,7 +1173,10 @@ export default function App() {
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                     <div className="text-xs font-mono text-white/60">{order.trackingNumber}</div>
+                                                     {/* [修复] 手机端应用掩码逻辑 */}
+                                                     <div className="text-xs font-mono text-white/60">
+                                                        {isAdminMasked && order.trackingNumber ? order.trackingNumber.slice(0,5) + '******' + order.trackingNumber.slice(-4) : order.trackingNumber}
+                                                     </div>
                                                      <div className="text-[10px] text-white/30 mt-1">{order.courier}</div>
                                                 </div>
                                             </div>
