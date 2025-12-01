@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Search, Package, Copy, Plus, Trash2, LogIn, LogOut, User, Truck, CheckCircle, AlertCircle, X, Save, ExternalLink, MapPin, Globe, ArrowRight, Zap, ChevronDown, ChevronUp, RefreshCw, Clock, Disc, Settings, Upload, FileText, Share2, CornerUpRight, ClipboardList, PackageCheck, Hourglass, XCircle, Sparkles, Phone, MessageSquare, Menu, Globe2, ShieldCheck, Lock, Download, BarChart2, PieChart, LayoutGrid, List, CheckSquare, Square, Box, ChevronRight, Info, Home, Edit, Clipboard, AlertTriangle, Filter, Smartphone, Image as ImageIcon, Signal, Wifi, Battery, Calendar, Palette, Check, FileSpreadsheet, CreditCard, Layers, Activity, Eye, EyeOff, Play, Pause, Database, FileJson, MoreHorizontal, Volume2, VolumeX, Gift, Sparkle, Type } from 'lucide-react';
 
-// --- 配置区域 (请填写你的 Supabase 信息) ---
+// --- 配置区域 (Supabase 信息) ---
 const SUPABASE_URL = "https://vfwgmzsppkdeqccflian.supabase.co"; 
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmd2dtenNwcGtkZXFjY2ZsaWFuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0NDQzNTgsImV4cCI6MjA4MDAyMDM1OH0.BeYDz7MeUwNf8LZmd7Ji33JaOeYZ3YnhNCsMjYL46I8"; 
-
-// --- 阿里云 API 默认配置 ---
-const DEFAULT_API_URL = "https://wdexpress.market.alicloudapi.com/gxali";
 
 // --- 核心配置 ---
 const LOCAL_SETTINGS_KEY = 'dhcx.me_settings_v3_production'; 
@@ -24,35 +21,45 @@ const loadScript = (src, globalName) => {
     }); 
 };
 
-// --- 安全编码工具 (修复乱码问题) ---
-// 1. 使用 UTF-8 标准 Base64 编码，兼容中文
-// 2. 添加 'tk_' 前缀，防止将普通单号误判为加密串
+// --- 安全编码工具 (修复解码失败问题) ---
 const encodeToken = (str) => {
+    if (!str) return '';
     try {
+        // 使用标准 UTF-8 Base64 编码，并替换 URL 不安全字符
         const base64 = btoa(unescape(encodeURIComponent(str)))
             .replace(/\+/g, '-')
             .replace(/\//g, '_')
             .replace(/=+$/, '');
         return 'tk_' + base64;
     } catch (e) {
-        return str;
+        return str; // 编码失败返回原串
     }
 };
 
 const decodeToken = (str) => {
+    if (!str) return '';
     try {
-        // 关键修复：如果没有前缀，说明是普通明文查询，直接返回原值
-        if (!str || !str.startsWith('tk_')) {
+        // 1. 如果不是以 tk_ 开头，说明是普通明文（旧链接或直接输入的单号），直接返回
+        if (!str.startsWith('tk_')) {
             return str;
         }
         
-        const base64 = str.slice(3).replace(/-/g, '+').replace(/_/g, '/');
-        // 补全 padding，虽然现代浏览器通常能容错，但补全更安全
-        const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
-        return decodeURIComponent(escape(atob(padded)));
+        // 2. 提取 Base64 部分
+        let base64 = str.slice(3).replace(/-/g, '+').replace(/_/g, '/');
+        
+        // 3. 智能补全 Base64 Padding (=)，防止报错
+        const pad = base64.length % 4;
+        if (pad) {
+            base64 += '='.repeat(4 - pad);
+        }
+
+        // 4. 解码 (逆向操作: atob -> escape -> decodeURIComponent)
+        return decodeURIComponent(escape(atob(base64)));
     } catch (e) {
-        console.warn("Token decode failed, returning original:", e);
-        return str; 
+        console.warn("解码失败:", e);
+        // 如果解码彻底失败，为了不让用户看到乱码，返回空字符串让用户自己输，或者尝试返回原串
+        // 这里返回 null 表示解码无效
+        return null; 
     }
 };
 
@@ -222,7 +229,7 @@ const DEFAULT_TEMPLATES = {
 };
 
 const DEFAULT_SETTINGS = {
-    apiUrl: DEFAULT_API_URL, 
+    // API 配置已移除，使用默认值或数据库值
     useMock: false, 
     showRecipient: true, 
     showProduct: true,
@@ -257,15 +264,42 @@ const STATUS_STYLES = {
     '异常件': { color: 'text-[#FF0055]', bg: 'bg-[#FF0055]/10', border: 'border-[#FF0055]/30', icon: AlertTriangle, label: '异常件', glow: 'shadow-[0_0_15px_rgba(255,0,85,0.3)]', illustration: IllusAlert },
 };
 
+// --- Modified Typewriter Component with Caching ---
 const Typewriter = ({ text }) => {
     const [currentText, setCurrentText] = useState('');
     const [isTyping, setIsTyping] = useState(true);
+    
     useEffect(() => {
         if (!text) return;
-        let i = 0; setCurrentText(''); setIsTyping(true);
-        const timer = setInterval(() => { if (i < text.length) { setCurrentText(prev => prev + text.charAt(i)); i++; } else { clearInterval(timer); setIsTyping(false); } }, 50);
+        
+        const CACHE_KEY = 'dhcx_announcement_read_state';
+        const hasSeen = localStorage.getItem(CACHE_KEY);
+        
+        // 如果已经看过，直接显示完整文本，不播放动画
+        if (hasSeen) {
+            setCurrentText(text);
+            setIsTyping(false);
+            return;
+        }
+        
+        // 如果没看过，播放动画
+        let i = 0; 
+        setCurrentText(''); 
+        setIsTyping(true);
+        const timer = setInterval(() => { 
+            if (i < text.length) { 
+                setCurrentText(prev => prev + text.charAt(i)); 
+                i++; 
+            } else { 
+                clearInterval(timer); 
+                setIsTyping(false); 
+                // 播放完毕后标记为已读
+                localStorage.setItem(CACHE_KEY, 'true');
+            } 
+        }, 30); // 稍微加快一点打字速度减少等待感
         return () => clearInterval(timer);
     }, [text]);
+    
     return <span>{currentText}{isTyping && <span className="animate-pulse">|</span>}</span>;
 };
 
@@ -470,10 +504,9 @@ export default function App() {
                 const params = new URLSearchParams(window.location.search);
                 const q = params.get('q');
                 if (q) {
-                    const decodedQuery = decodeToken(q); // 尝试解码，如果是明文也兼容
-                    if (decodedQuery) {
+                    const decodedQuery = decodeToken(q); // 尝试解码
+                    if (decodedQuery) { // 只有在解码成功且非空时才查询
                         setSearchQuery(decodedQuery);
-                        // 自动触发查询
                         handleSearch(null, decodedQuery); 
                     }
                 }
@@ -757,7 +790,7 @@ export default function App() {
             queryValue = order.phone.replace(/\D/g, '');
         }
         
-        // 生成 URL Safe 的 Base64 Token
+        // 生成 URL Safe 的 Base64 Token (带 tk_ 前缀)
         const safeToken = encodeToken(queryValue);
         
         const queryLink = `https://dhcx.me?q=${safeToken}`; 
@@ -1189,7 +1222,7 @@ export default function App() {
                                                     {apiSettings.showProduct && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">商品名称</div> <div className="text-base font-bold break-words leading-snug relative z-20" style={{ color: apiSettings.themeColor }}>{dbOrder.product}</div> </div> )}
                                                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/10">
                                                         {apiSettings.showRecipient && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">收件人</div> <div className="flex items-center gap-2"> <div className="text-sm font-bold text-white">{isNameMasked ? (dbOrder.recipientName ? dbOrder.recipientName[0] + '*'.repeat(Math.max(0, dbOrder.recipientName.length - 1)) : '***') : dbOrder.recipientName}</div> <button onClick={() => setIsNameMasked(!isNameMasked)} className="text-white/30 hover:text-white transition-colors p-1"><Eye size={12}/></button> </div> </div> )}
-                                                        <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">运单号</div> <div className="flex items-center gap-2"> <span className="text-sm font-mono text-white/80">{dbOrder.trackingNumber}</span> <button onClick={() => copyToClipboard(dbOrder.trackingNumber)} className="text-white/40 hover:text-white transition-colors relative z-20 p-1" title="复制单号"><Copy size={12}/></button> </div> </div>
+                                                        <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">运单号</div> <div className="flex items-center gap-2"> <span className="text-sm font-mono text-white/80">{dbOrder.trackingNumber}</span> <button onClick={() => copyToClipboard(dbOrder.trackingNumber)} className="text-white/40 hover:text-white transition-colors relative z-20 p-1" title="复制单号"><Copy size={12}/></button> <div className="w-px h-3 bg-white/10 mx-1"></div> </div> </div>
                                                     </div>
                                                 </div>
                                             </div>
