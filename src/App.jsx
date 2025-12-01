@@ -21,39 +21,34 @@ const loadScript = (src, globalName) => {
     }); 
 };
 
-// --- 安全编码工具 (修复解码失败问题) ---
+// --- 安全编码工具 (智能缩短策略) ---
 const encodeToken = (str) => {
     if (!str) return '';
+    if (/^[A-Za-z0-9]+$/.test(str)) {
+        return str;
+    }
     try {
-        // 使用标准 UTF-8 Base64 编码，并替换 URL 不安全字符
         const base64 = btoa(unescape(encodeURIComponent(str)))
             .replace(/\+/g, '-')
             .replace(/\//g, '_')
             .replace(/=+$/, '');
         return 'tk_' + base64;
     } catch (e) {
-        return str; // 编码失败返回原串
+        return str; 
     }
 };
 
 const decodeToken = (str) => {
     if (!str) return '';
     try {
-        // 1. 如果不是以 tk_ 开头，说明是普通明文（旧链接或直接输入的单号），直接返回
         if (!str.startsWith('tk_')) {
             return str;
         }
-        
-        // 2. 提取 Base64 部分
         let base64 = str.slice(3).replace(/-/g, '+').replace(/_/g, '/');
-        
-        // 3. 智能补全 Base64 Padding (=)，防止报错
         const pad = base64.length % 4;
         if (pad) {
             base64 += '='.repeat(4 - pad);
         }
-
-        // 4. 解码 (逆向操作: atob -> escape -> decodeURIComponent)
         return decodeURIComponent(escape(atob(base64)));
     } catch (e) {
         console.warn("解码失败:", e);
@@ -70,7 +65,6 @@ const initSupabase = async () => {
          supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
          return supabase;
     }
-    
     try {
         console.log("正在连接 Supabase...");
         const sb = await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', 'supabase');
@@ -106,22 +100,16 @@ const DataService = {
     searchPublic: async (queryText) => {
         if (!supabase) throw new Error("系统初始化中，请刷新页面重试"); 
         if (!queryText) return [];
-
         const cleanQuery = queryText.trim().replace(/\s+/g, '');
-        
         let conditions = `trackingNumber.eq.${cleanQuery},phone.eq.${cleanQuery},recipientName.eq.${cleanQuery}`;
-        
         if (/^\d{4,}$/.test(cleanQuery)) {
             conditions += `,phone.like.%${cleanQuery}`;
         }
-
         const { data, error } = await supabase
             .from('orders')
             .select('*')
             .or(conditions);
-        
         if (error) throw error;
-        
         return data || [];
     },
     
@@ -144,7 +132,6 @@ const DataService = {
         const { error } = await supabase.from('orders').delete().in('id', ids);
         if (error) throw error;
     },
-    // 新增：清空所有订单 (保留 timestamp > 0 的判断作为安全措施)
     deleteAllOrders: async () => {
         if (!supabase) throw new Error("数据库未连接");
         const { error } = await supabase.from('orders').delete().gt('timestamp', 0);
@@ -162,18 +149,14 @@ const DataService = {
     },
     queryLogisticsFromEdge: async (trackingNumber, courierCode, phone) => {
         if (!supabase) throw new Error("数据库未连接");
-        
         if (!trackingNumber || trackingNumber.trim() === '') {
              throw new Error("订单未关联快递单号");
         }
-
         const mobileSuffix = phone ? String(phone).replace(/\D/g, '').slice(-4) : '';
-        
         try {
             const { data, error } = await supabase.functions.invoke('query-logistics', {
                 body: { no: trackingNumber, type: courierCode, mobile: mobileSuffix }
             });
-
             if (error) {
                 let detailMsg = "服务暂时不可用";
                 try {
@@ -191,15 +174,12 @@ const DataService = {
                 } catch (e) { 
                     detailMsg = error.message || "未知网络错误";
                 }
-                
                 if (detailMsg.includes("400") || detailMsg.includes("Bad Request")) {
                     detailMsg = "快递单号不存在或格式有误";
                 }
-                
                 console.error("Edge Function 报错:", detailMsg);
                 throw new Error(detailMsg);
             }
-            
             return data;
         } catch (err) {
             console.error("调用过程异常:", err);
@@ -233,7 +213,6 @@ const DEFAULT_TEMPLATES = {
 };
 
 const DEFAULT_SETTINGS = {
-    // API 配置已移除，使用默认值或数据库值
     useMock: false, 
     showRecipient: true, 
     showProduct: true,
@@ -250,7 +229,6 @@ const COURIER_CODE_MAP = {
     '顺丰速运': 'SFEX', '顺丰': 'SFEX', '京东物流': 'JD', '京东': 'JD', '圆通速递': 'YTO', '圆通': 'YTO', '中通快递': 'ZTO', '中通': 'ZTO', '申通快递': 'STO', '申通': 'STO', '韵达快递': 'YD', '韵达': 'YD', '极兔速递': 'JTS', '极兔': 'JTS', 'EMS': 'EMS', '邮政包裹': 'PS', '邮政': 'PS', '德邦快递': 'DEPPON', '德邦': 'DEPPON', '通用快递': '' 
 };
 const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-const toBase62 = (numStr) => { try { let n = parseInt(numStr, 10); if (isNaN(n)) return numStr; if (n === 0) return '0'; let s = ''; while (n > 0) { s = BASE62_CHARS[n % 62] + s; n = Math.floor(n / 62); } return s; } catch (e) { return numStr; } };
 const STATUS_MAP = { "WAIT_ACCEPT": "待揽收", "ACCEPT": "已揽收", "TRANSPORT": "运输中", "DELIVERING": "派件中", "AGENT_SIGN": "已代签收", "SIGN": "已签收", "FAILED": "包裹异常", "RECEIVE": "接单中", "SEND_ON": "转单/转寄", "ARRIVE_CITY": "到达城市", "STA_INBOUND": "已入柜/站", "STA_SIGN": "从柜/站取出", "RETURN_SIGN": "退回签收", "REFUSE_SIGN": "拒收", "DELIVER_ABNORMAL": "派件异常", "RETENTION": "滞留件", "ISSUE": "问题件", "RETURN": "退回件", "DAMAGE": "破损", "CANCEL_ORDER": "揽件取消" };
 
 // --- Visual Components ---
@@ -272,21 +250,15 @@ const STATUS_STYLES = {
 const Typewriter = ({ text }) => {
     const [currentText, setCurrentText] = useState('');
     const [isTyping, setIsTyping] = useState(true);
-    
     useEffect(() => {
         if (!text) return;
-        
         const CACHE_KEY = 'dhcx_announcement_read_state';
         const hasSeen = localStorage.getItem(CACHE_KEY);
-        
-        // 如果已经看过，直接显示完整文本，不播放动画
         if (hasSeen) {
             setCurrentText(text);
             setIsTyping(false);
             return;
         }
-        
-        // 如果没看过，播放动画
         let i = 0; 
         setCurrentText(''); 
         setIsTyping(true);
@@ -297,13 +269,11 @@ const Typewriter = ({ text }) => {
             } else { 
                 clearInterval(timer); 
                 setIsTyping(false); 
-                // 播放完毕后标记为已读
                 localStorage.setItem(CACHE_KEY, 'true');
             } 
-        }, 30); // 稍微加快一点打字速度减少等待感
+        }, 30);
         return () => clearInterval(timer);
     }, [text]);
-    
     return <span>{currentText}{isTyping && <span className="animate-pulse">|</span>}</span>;
 };
 
@@ -464,6 +434,9 @@ export default function App() {
     const [apiSettings, setApiSettings] = useState(DEFAULT_SETTINGS);
     const [newOrder, setNewOrder] = useState({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' });
     
+    // 新增：安全码输入状态
+    const [securityCodeInput, setSecurityCodeInput] = useState('');
+    
     // 用于处理状态的多重点击计数
     const statusClickRef = useRef({ count: 0, lastTime: 0 });
 
@@ -474,7 +447,6 @@ export default function App() {
         const initialize = async () => {
             const sb = await initSupabase();
             if (sb) {
-                // 加载配置
                 const remoteSettings = await DataService.getSiteConfig();
                 if (remoteSettings && Object.keys(remoteSettings).length > 0) {
                     setApiSettings(prev => ({ ...prev, ...remoteSettings }));
@@ -488,7 +460,6 @@ export default function App() {
                     } catch (e) { console.error(e); }
                 }
                 
-                // 检查登录状态
                 const { data: { session } } = await sb.auth.getSession();
                 setIsAdmin(!!session);
                 if (session) fetchAdminOrders();
@@ -503,13 +474,11 @@ export default function App() {
                     }
                 });
 
-                // --- 自动查询逻辑 (URL 参数) ---
-                // 必须在 Supabase 初始化完成后执行
                 const params = new URLSearchParams(window.location.search);
                 const q = params.get('q');
                 if (q) {
-                    const decodedQuery = decodeToken(q); // 尝试解码
-                    if (decodedQuery) { // 只有在解码成功且非空时才查询
+                    const decodedQuery = decodeToken(q); 
+                    if (decodedQuery) { 
                         setSearchQuery(decodedQuery);
                         handleSearch(null, decodedQuery); 
                     }
@@ -520,7 +489,7 @@ export default function App() {
             setLoading(false);
         };
         initialize();
-    }, []); // 仅在组件挂载时执行
+    }, []);
 
     const fetchAdminOrders = useCallback(async () => {
         setLoading(true);
@@ -548,35 +517,27 @@ export default function App() {
 
     // 处理“当前状态”UI的连续5次点击
     const handleStatusMultiClick = (e, order) => {
-        e.stopPropagation(); // 阻止事件冒泡
-        
+        e.stopPropagation(); 
         const now = Date.now();
         const record = statusClickRef.current;
-        
-        // 如果两次点击间隔超过 500ms，重置计数
         if (now - record.lastTime > 500) {
             record.count = 1;
         } else {
             record.count += 1;
         }
         record.lastTime = now;
-        
-        // 触发逻辑
         if (record.count >= 5) {
             handleQuickCopyReply(order);
             showToast("话术已复制");
-            
-            // 震动反馈 (如果设备支持)
             if (navigator.vibrate) {
                 navigator.vibrate(200); 
             }
-            
-            // 重置计数
             record.count = 0;
         }
     };
 
     const handleClearAllClick = () => {
+         setSecurityCodeInput(''); 
          setConfirmModal({ type: 'clear_all' });
     };
 
@@ -585,12 +546,16 @@ export default function App() {
         if (!confirmModal) return; 
         try {
             if (confirmModal.type === 'clear_all') {
+                // 安全码校验逻辑
+                if (securityCodeInput !== 'wT357212') {
+                    showToast("安全码错误，操作拒绝！", "error");
+                    return;
+                }
                 await DataService.deleteAllOrders();
                 setOrders([]);
                 setTotalOrdersCount(0);
-                showToast("所有订单已清空");
+                showToast("验证通过，所有订单已清空");
             } else {
-                // 这里是单个删除或批量删除的逻辑
                 let ordersToDelete = []; 
                 if (confirmModal.type === 'batch') { ordersToDelete = Array.from(selectedOrders); } 
                 else if (confirmModal.id) { ordersToDelete = [confirmModal.id]; } 
@@ -669,7 +634,6 @@ export default function App() {
     
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
-        // 自动过滤掉双引号 "
         const lines = importText.replace(/"/g, '').trim().replace(/\r/g, '').split('\n'); let newOrdersData = [];
         lines.forEach((line, index) => { 
             if (!line.trim() || (index === 0 && line.includes('单号'))) return; 
@@ -757,9 +721,6 @@ export default function App() {
             }
             if (!courierCode && order.courier !== '通用快递') { throw new Error(`未找到快递代码: ${order.courier}`); }
             const result = await DataService.queryLogisticsFromEdge(order.trackingNumber, courierCode, order.phone);
-
-            console.log("Full API Response:", JSON.stringify(result));
-
             const isSuccess = 
                 (result.code == 200) || 
                 (result.success === true) || 
@@ -770,7 +731,6 @@ export default function App() {
                 (Array.isArray(result.list) && result.list.length > 0) || 
                 (Array.isArray(result.traces) && result.traces.length > 0) ||
                 (Array.isArray(result.Traces) && result.Traces.length > 0);
-
             if (isSuccess) { 
                 let rawList = result.data || result.list || result.traces || result.Traces || result.logisticsTraceDetailList || [];
                 if (!Array.isArray(rawList) && typeof rawList === 'object') { rawList = rawList.list || rawList.traces || rawList.Traces || []; }
@@ -800,17 +760,11 @@ export default function App() {
             if (sortedData.length > 0) { realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; } 
         } 
         const statusSimple = getSimplifiedStatus(realTimeStatus); 
-        
-        // --- 核心修改：生成 Base64 短链接 Token ---
-        // 优先使用手机号（纯数字），如果没有手机号或含字母，则使用单号
         let queryValue = order.trackingNumber;
         if (order.phone && /^\d+$/.test(order.phone)) {
             queryValue = order.phone.replace(/\D/g, '');
         }
-        
-        // 生成 URL Safe 的 Base64 Token (带 tk_ 前缀)
         const safeToken = encodeToken(queryValue);
-        
         const queryLink = `https://dhcx.me?q=${safeToken}`; 
         let templateKey = 'TRANSPORT'; 
         if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; 
@@ -858,7 +812,6 @@ export default function App() {
                     <div className="md:hidden h-14 bg-black/80 backdrop-blur-md border-b border-white/10 flex justify-between items-center px-4 shrink-0 safe-top">
                         <span className="font-black text-white text-lg">管理面板</span>
                         <div className="flex gap-4 text-white/50">
-                            {/* 手机顶部栏增加退出按钮 */}
                             <LogOut onClick={handleAdminLogout} size={20} className="text-white/50 hover:text-red-500 transition-colors"/>
                             <Home onClick={() => { setCurrentView('search'); }} size={20} className="active:text-white transition-colors"/>
                             <Settings onClick={() => { setAdminViewMode('settings'); }} size={20} className={adminViewMode==='settings'?'text-[#CCFF00]':'active:text-white'}/>
@@ -1210,8 +1163,21 @@ export default function App() {
                         ? '此操作将永久删除所有订单记录，且无法恢复！' 
                         : (confirmModal.type === 'batch' ? `您即将删除 ${confirmModal.count} 条记录。` : '此操作不可撤销。')
                     }
-                </div><div className="flex gap-3 mt-8"><button onClick={() => setConfirmModal(null)} className="flex-1 py-3 bg-white/5 text-white rounded-lg active:scale-95 transition-transform">取消</button><button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-lg active:scale-95 transition-transform">
-                    {confirmModal.type === 'clear_all' ? '确认清空' : '删除'}
+                </div>
+                {confirmModal.type === 'clear_all' && (
+                    <div className="mb-6">
+                        <input 
+                            type="text" 
+                            value={securityCodeInput}
+                            onChange={(e) => setSecurityCodeInput(e.target.value)}
+                            className="w-full h-12 bg-black border border-red-900/50 rounded-lg text-center text-red-500 font-mono text-sm tracking-widest placeholder-red-900/50 outline-none focus:border-red-500 transition-colors"
+                            placeholder="请输入安全码"
+                            autoFocus
+                        />
+                    </div>
+                )}
+                <div className="flex gap-3 mt-8"><button onClick={() => setConfirmModal(null)} className="flex-1 py-3 bg-white/5 text-white rounded-lg active:scale-95 transition-transform">取消</button><button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-lg active:scale-95 transition-transform">
+                    {confirmModal.type === 'clear_all' ? '验证并清空' : '删除'}
                 </button></div></div></div>)}
             </div>
         );
@@ -1229,7 +1195,6 @@ export default function App() {
                 <TiltCard className="w-full relative z-20 group mt-8"><div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-1.5 flex gap-2 shadow-2xl"><form onSubmit={handleSearch} className="flex-1"><input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="请输入姓名/手机号（含后四位）/单号" className="w-full h-12 pl-4 pr-4 bg-transparent text-white placeholder-white/30 font-mono text-sm outline-none" inputMode="text"/></form><button onClick={handleSearch} className="h-12 px-6 rounded-lg font-bold text-black hover:brightness-110 active:scale-95 transition-all" style={{ backgroundColor: apiSettings.themeColor }}>查询</button></div></TiltCard>
             </div>
             <div className="relative z-10 px-6 pb-20 flex-1">
-                {/* 移动最近查询记录到公告上方 */}
                 {!hasSearched && getSearchHistory().length > 0 && (<div className="mb-6 animate-in fade-in slide-in-from-bottom-4"><div className="flex justify-between items-end mb-3"><span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">最近查询</span><button onClick={clearSearchHistory} className="text-white/20 hover:text-red-500 p-2"><Trash2 size={12}/></button></div><div className="flex flex-wrap gap-2">{getSearchHistory().map((h, i) => (<button key={i} onClick={() => { setSearchQuery(h); handleSearch(null, h); }} className="px-3 py-1.5 border border-white/10 bg-white/5 rounded text-[10px] font-mono text-white/60 hover:bg-white/10 hover:text-white active:scale-95 transition-transform">{h}</button>))}</div></div>)}
                 
                 {(apiSettings.announcement && !hasSearched) && (<div className="mb-6 p-4 rounded-lg border border-white/10 bg-black/20 backdrop-blur-md"><div className="flex items-center gap-2 mb-2"><Zap size={12} style={{ color: apiSettings.themeColor }} className="animate-pulse"/><span className="text-[10px] font-bold uppercase tracking-widest text-white/50">公告</span></div><p className="text-xs text-white/80 font-mono leading-loose"><Typewriter text={apiSettings.announcement} /></p></div>)}
@@ -1256,7 +1221,6 @@ export default function App() {
                                             <div className="p-4 relative z-10">
                                                 <div className="flex justify-between items-end mb-3">
                                                     <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">当前状态</div> 
-                                                    {/* 新增：点击当前状态 UI 复制话术 (需连击5次) */}
                                                     <div 
                                                         className={`flex items-center gap-2 px-2 py-1 rounded border backdrop-blur-md ${statusStyle.bg} ${statusStyle.border} ${statusStyle.glow} transition-all duration-500 cursor-pointer hover:brightness-110 active:scale-95 select-none`}
                                                         onClick={(e) => handleStatusMultiClick(e, dbOrder)}
