@@ -24,11 +24,16 @@ const loadScript = (src, globalName) => {
     }); 
 };
 
-// --- 安全编码工具 (Base64 URL Safe) ---
-// 替换之前的 Base62，兼容性更好，支持含字母的单号
+// --- 安全编码工具 (修复乱码问题) ---
+// 1. 使用 UTF-8 标准 Base64 编码，兼容中文
+// 2. 添加 'tk_' 前缀，防止将普通单号误判为加密串
 const encodeToken = (str) => {
     try {
-        return btoa(encodeURIComponent(str)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const base64 = btoa(unescape(encodeURIComponent(str)))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+        return 'tk_' + base64;
     } catch (e) {
         return str;
     }
@@ -36,11 +41,18 @@ const encodeToken = (str) => {
 
 const decodeToken = (str) => {
     try {
-        str = str.replace(/-/g, '+').replace(/_/g, '/');
-        while (str.length % 4) str += '=';
-        return decodeURIComponent(atob(str));
+        // 关键修复：如果没有前缀，说明是普通明文查询，直接返回原值
+        if (!str || !str.startsWith('tk_')) {
+            return str;
+        }
+        
+        const base64 = str.slice(3).replace(/-/g, '+').replace(/_/g, '/');
+        // 补全 padding，虽然现代浏览器通常能容错，但补全更安全
+        const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+        return decodeURIComponent(escape(atob(padded)));
     } catch (e) {
-        return str; // 如果解码失败，直接返回原字符串（兼容明文查询）
+        console.warn("Token decode failed, returning original:", e);
+        return str; 
     }
 };
 
@@ -1177,7 +1189,7 @@ export default function App() {
                                                     {apiSettings.showProduct && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">商品名称</div> <div className="text-base font-bold break-words leading-snug relative z-20" style={{ color: apiSettings.themeColor }}>{dbOrder.product}</div> </div> )}
                                                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/10">
                                                         {apiSettings.showRecipient && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">收件人</div> <div className="flex items-center gap-2"> <div className="text-sm font-bold text-white">{isNameMasked ? (dbOrder.recipientName ? dbOrder.recipientName[0] + '*'.repeat(Math.max(0, dbOrder.recipientName.length - 1)) : '***') : dbOrder.recipientName}</div> <button onClick={() => setIsNameMasked(!isNameMasked)} className="text-white/30 hover:text-white transition-colors p-1"><Eye size={12}/></button> </div> </div> )}
-                                                        <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">运单号</div> <div className="flex items-center gap-2"> <span className="text-sm font-mono text-white/80">{dbOrder.trackingNumber}</span> <button onClick={() => copyToClipboard(dbOrder.trackingNumber)} className="text-white/40 hover:text-white transition-colors relative z-20 p-1" title="复制单号"><Copy size={12}/></button> <div className="w-px h-3 bg-white/10 mx-1"></div> </div> </div>
+                                                        <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">运单号</div> <div className="flex items-center gap-2"> <span className="text-sm font-mono text-white/80">{dbOrder.trackingNumber}</span> <button onClick={() => copyToClipboard(dbOrder.trackingNumber)} className="text-white/40 hover:text-white transition-colors relative z-20 p-1" title="复制单号"><Copy size={12}/></button> </div> </div>
                                                     </div>
                                                 </div>
                                             </div>
