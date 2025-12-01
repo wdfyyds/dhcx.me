@@ -588,9 +588,18 @@ export default function App() {
 
                 const params = new URLSearchParams(window.location.search);
                 
-                // --- [新增] 短链解析逻辑 ---
-                const shortCode = params.get('s');
+                // --- [修改] 短链解析逻辑 (支持 ?s=xxx 和 /xxx) ---
+                let shortCode = params.get('s');
                 const q = params.get('q');
+                
+                // 如果 URL 参数没找到，尝试从路径获取 (例如 dhcx.me/Axzfz)
+                if (!shortCode && !q) {
+                    const pathSegment = window.location.pathname.slice(1);
+                    // 简单的校验：非空且仅包含字母数字
+                    if (pathSegment && /^[a-zA-Z0-9]+$/.test(pathSegment)) {
+                        shortCode = pathSegment;
+                    }
+                }
                 
                 if (shortCode) {
                     // 如果有 s 参数，去数据库换取原始查询串
@@ -852,9 +861,9 @@ export default function App() {
     const toggleSelection = (id) => { const newSet = new Set(selectedOrders); newSet.has(id) ? newSet.delete(id) : newSet.add(id); setSelectedOrders(newSet); };
     const toggleSelectAll = () => { const newSet = new Set(); if (selectedOrders.size !== orders.length) orders.forEach(o => newSet.add(o.id)); setSelectedOrders(newSet); };
     
-    // --- [修复] 强化版复制功能 (兼容手机端异步复制) ---
+    // --- [修复] 强化版复制功能 (兼容手机端异步复制 + 弹窗降级) ---
     const copyToClipboard = async (text) => {
-        // 优先使用 Clipboard API (现代浏览器/HTTPS)
+        // 1. 尝试使用 Clipboard API (现代浏览器/HTTPS)
         if (navigator.clipboard && navigator.clipboard.writeText) {
             try {
                 await navigator.clipboard.writeText(text);
@@ -865,34 +874,54 @@ export default function App() {
             }
         }
         
-        // 降级方案: createTextRange / execCommand (旧版兼容/非HTTPS环境)
+        // 2. 尝试使用 execCommand (旧版兼容/非HTTPS环境)
         try {
             const textArea = document.createElement("textarea");
             textArea.value = text;
             
-            // 确保元素不可见但可被选中，防止页面跳动
+            // 关键：iOS 需要 contentEditable 和 readOnly=false 才能 programmatically select
+            textArea.contentEditable = "true";
+            textArea.readOnly = false;
+            
+            // 样式：不可见但存在
             textArea.style.position = "fixed";
             textArea.style.left = "-9999px";
             textArea.style.top = "0";
             textArea.style.opacity = "0";
-            
+            // 防止 iOS 缩放
+            textArea.style.fontSize = "16px"; 
+
             document.body.appendChild(textArea);
+            
+            // 选中
             textArea.focus();
             textArea.select();
             
+            // iOS 选中兼容
+            const range = document.createRange();
+            range.selectNodeContents(textArea);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            textArea.setSelectionRange(0, 999999); // For mobile devices
+
             const successful = document.execCommand('copy');
             document.body.removeChild(textArea);
             
             if (successful) {
                 showToast("复制成功");
-            } else {
-                throw new Error("execCommand 返回 false");
+                return;
             }
         } catch (err) {
-            console.error("所有复制手段均失败:", err);
-            showToast("复制失败，请手动长按复制", "error");
-            // 最后的保底：弹出 prompt 让用户复制
-            // window.prompt("请长按复制内容:", text); 
+            console.error("后台复制失败:", err);
+        }
+
+        // 3. 终极降级方案：如果是异步操作导致 execCommand 失效，直接弹出 prompt 让用户复制
+        // 这虽然不优雅，但保证用户能拿到内容，不会“失效”
+        try {
+            window.prompt("请全选复制以下内容:", text);
+        } catch (e) {
+            showToast("复制失败，请尝试手动复制", "error");
         }
     };
     
@@ -985,9 +1014,8 @@ export default function App() {
             // 尝试获取数据库短链
             const shortCode = await DataService.getOrCreateShortLink(queryValue);
             
-            // [修改] 链接格式改为 dhcx.me?s=xxxxx (去掉了 https://)
-            // 注意：为了保证链接能被浏览器正确识别参数，保留了 ?s= 格式，但移除了协议头
-            queryLink = `dhcx.me?s=${shortCode}`;
+            // [修改] 链接格式改为 dhcx.me/xxxxx (无 https://, 无 ?s=)
+            queryLink = `dhcx.me/${shortCode}`; 
         } catch (e) {
             // 降级方案
             console.warn("短链生成失败，自动降级为长链接:", e.message);
@@ -1074,7 +1102,14 @@ export default function App() {
                         {adminViewMode === 'list' && (
                             <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 animate-in fade-in duration-500">
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/5 p-4 md:p-6 rounded-2xl border border-white/5 backdrop-blur-sm sticky top-0 z-20">
-                                    <div className="flex justify-between w-full md:w-auto items-center"> <div className="flex items-center gap-3"> <div><h2 className="text-2xl md:text-3xl font-black text-white tracking-tight mb-1">订单管理</h2><p className="text-[10px] font-mono text-white/40 uppercase tracking-widest">共 {totalOrdersCount} 条记录</p></div> <button onClick={() => setIsAdminMasked(!isAdminMasked)} className="text-white/30 hover:text-white transition-colors p-2 rounded-full hover:bg-white/10" title={isAdminMasked ? "显示敏感信息" : "隐藏敏感信息"}> {isAdminMasked ? <EyeOff size={20}/> : <Eye size={20}/>} </button> </div> <button onClick={() => setShowImportModal(true)} className="md:hidden w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><Plus size={18}/></button> </div>
+                                    <div className="flex justify-between w-full md:w-auto items-center"> 
+                                        <div className="flex items-center gap-3"> 
+                                            <div><h2 className="text-2xl md:text-3xl font-black text-white tracking-tight mb-1">订单管理</h2><p className="text-[10px] font-mono text-white/40 uppercase tracking-widest">共 {totalOrdersCount} 条记录</p></div> 
+                                            {/* [修复] 增加管理端眼睛点击区域，确保好点 */}
+                                            <button onClick={() => setIsAdminMasked(!isAdminMasked)} className="text-white/30 hover:text-white transition-colors p-3 rounded-full hover:bg-white/10 active:bg-white/20 active:scale-95" title={isAdminMasked ? "点击显示敏感信息" : "点击隐藏敏感信息"}> {isAdminMasked ? <Eye size={24}/> : <EyeOff size={24}/>} </button> 
+                                        </div> 
+                                        <button onClick={() => setShowImportModal(true)} className="md:hidden w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><Plus size={18}/></button> 
+                                    </div>
                                     <div className="flex flex-col gap-3 w-full md:w-auto"> 
                                         <div className="flex gap-2 w-full md:w-auto"> 
                                             <div className="relative flex-1 md:w-48">
@@ -1520,7 +1555,7 @@ export default function App() {
                                                 <div className="space-y-2">
                                                     {apiSettings.showProduct && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">商品名称</div> <div className="text-base font-bold break-words leading-snug relative z-20" style={{ color: apiSettings.themeColor }}>{dbOrder.product}</div> </div> )}
                                                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/10">
-                                                        {apiSettings.showRecipient && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">收件人</div> <div className="flex items-center gap-2"> <div className="text-sm font-bold text-white">{isNameMasked ? (dbOrder.recipientName ? dbOrder.recipientName[0] + '*'.repeat(Math.max(0, dbOrder.recipientName.length - 1)) : '***') : dbOrder.recipientName}</div> <button onClick={() => setIsNameMasked(!isNameMasked)} className="text-white/30 hover:text-white transition-colors p-1"><Eye size={12}/></button> </div> </div> )}
+                                                        {apiSettings.showRecipient && ( <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">收件人</div> <div className="flex items-center gap-2"> <div className="text-sm font-bold text-white">{isNameMasked ? (dbOrder.recipientName ? dbOrder.recipientName[0] + '*'.repeat(Math.max(0, dbOrder.recipientName.length - 1)) : '***') : dbOrder.recipientName}</div> <button onClick={() => setIsNameMasked(!isNameMasked)} className="text-white/30 hover:text-white transition-colors p-2 rounded active:bg-white/10"><Eye size={16}/></button> </div> </div> )}
                                                         <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">运单号</div> <div className="flex items-center gap-2"> <span className="text-sm font-mono text-white/80">{dbOrder.trackingNumber}</span> <button onClick={() => copyToClipboard(dbOrder.trackingNumber)} className="text-white/40 hover:text-white transition-colors relative z-20 p-1" title="复制单号"><Copy size={12}/></button> <div className="w-px h-3 bg-white/10 mx-1"></div> </div> </div>
                                                     </div>
                                                 </div>
