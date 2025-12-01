@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Search, Package, Copy, Plus, Trash2, LogIn, LogOut, User, Truck, CheckCircle, AlertCircle, X, Save, ExternalLink, MapPin, Globe, ArrowRight, Zap, ChevronDown, ChevronUp, RefreshCw, Clock, Disc, Settings, Upload, FileText, Share2, CornerUpRight, ClipboardList, PackageCheck, Hourglass, XCircle, Sparkles, Phone, MessageSquare, Menu, Globe2, ShieldCheck, Lock, Download, BarChart2, PieChart, LayoutGrid, List, CheckSquare, Square, Box, ChevronRight, Info, Home, Edit, Clipboard, AlertTriangle, Filter, Smartphone, Image as ImageIcon, Signal, Wifi, Battery, Calendar, Palette, Check, FileSpreadsheet, CreditCard, Layers, Activity, Eye, EyeOff, Play, Pause, Database, FileJson, MoreHorizontal, Volume2, VolumeX, Gift, Sparkle, Type } from 'lucide-react';
+import { Search, Package, Copy, Plus, Trash2, LogIn, LogOut, User, Truck, CheckCircle, AlertCircle, X, Save, ExternalLink, MapPin, Globe, ArrowRight, Zap, ChevronDown, ChevronUp, RefreshCw, Clock, Disc, Settings, Upload, FileText, Share2, CornerUpRight, ClipboardList, PackageCheck, Hourglass, XCircle, Sparkles, Phone, MessageSquare, Menu, Globe2, ShieldCheck, Lock, Download, BarChart2, PieChart, LayoutGrid, List, CheckSquare, Square, Box, ChevronRight, Info, Home, Edit, Clipboard, AlertTriangle, Filter, Smartphone, Image as ImageIcon, Signal, Wifi, Battery, Calendar, Palette, Check, FileSpreadsheet, CreditCard, Layers, Activity, Eye, EyeOff, Play, Pause, Database, FileJson, MoreHorizontal, Volume2, VolumeX, Gift, Sparkle, Type, Link as LinkIcon } from 'lucide-react';
 
 // --- 配置区域 (Supabase 信息) ---
 const SUPABASE_URL = "https://vfwgmzsppkdeqccflian.supabase.co"; 
@@ -21,7 +21,7 @@ const loadScript = (src, globalName) => {
     }); 
 };
 
-// --- 安全编码工具 (智能缩短策略) ---
+// --- 安全编码工具 (智能缩短策略 - 旧版降级方案) ---
 const encodeToken = (str) => {
     if (!str) return '';
     if (/^[A-Za-z0-9]+$/.test(str)) {
@@ -56,6 +56,16 @@ const decodeToken = (str) => {
     }
 };
 
+// --- [新增] 短链生成工具 ---
+const generateShortCode = (length = 5) => {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; // 去除易混淆字符 0,1,I,l,O
+    let result = '';
+    for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+};
+
 // --- 初始化 Supabase ---
 let supabase = null;
 
@@ -82,6 +92,68 @@ const initSupabase = async () => {
 
 // --- 数据服务层 ---
 const DataService = {
+    // --- [新增] 短链接服务 ---
+    // 获取或创建短链
+    getOrCreateShortLink: async (queryText) => {
+        if (!supabase) throw new Error("数据库未连接");
+        
+        // 1. 先查找是否已存在该内容的短链 (避免重复生成)
+        const { data: existing, error: findError } = await supabase
+            .from('short_urls')
+            .select('id')
+            .eq('original_query', queryText)
+            .limit(1);
+            
+        // [修复] 如果查询本身报错（例如表不存在），直接抛出错误，触发降级逻辑，不要进入生成循环
+        if (findError) {
+            console.warn("短链表查询失败 (可能是表未创建，将使用长链):", findError.message);
+            throw new Error("短链服务暂不可用");
+        }
+
+        if (existing && existing.length > 0) {
+            return existing[0].id;
+        }
+
+        // 2. 如果不存在，生成新的 (尝试最多3次以防冲突)
+        let attempts = 0;
+        while (attempts < 3) {
+            const code = generateShortCode(5); // 5位短码
+            const { error: insertError } = await supabase
+                .from('short_urls')
+                .insert([{ id: code, original_query: queryText }]);
+            
+            if (!insertError) {
+                return code;
+            }
+            
+            // [修复] 只有在主键冲突(23505)时才重试
+            if (insertError.code === '23505') {
+                console.log("短链冲突，重试生成...");
+                attempts++;
+                continue;
+            } else {
+                // 其他错误（如权限不足、表不存在）直接中断
+                console.warn("短链创建异常:", insertError.message);
+                throw new Error("短链创建失败: " + insertError.message);
+            }
+        }
+        throw new Error("短链生成繁忙，请使用长链");
+    },
+
+    // 解析短链
+    resolveShortLink: async (shortCode) => {
+        if (!supabase) return null;
+        const { data, error } = await supabase
+            .from('short_urls')
+            .select('original_query')
+            .eq('id', shortCode)
+            .single();
+        
+        if (error || !data) return null;
+        return data.original_query;
+    },
+    // --- [结束] 短链接服务 ---
+
     getOrders: async (page, pageSize, filters = {}) => {
         if (!supabase) throw new Error("数据库未连接");
         let query = supabase.from('orders').select('*', { count: 'exact' });
@@ -139,11 +211,8 @@ const DataService = {
         if (error) throw error;
     },
     
-    // --- [新增功能] 数据去重 ---
     removeDuplicates: async () => {
         if (!supabase) throw new Error("数据库未连接");
-        
-        // 1. 获取所有订单的关键信息，按时间倒序排列（确保最新的在前面）
         const { data, error } = await supabase
             .from('orders')
             .select('id, trackingNumber, timestamp')
@@ -155,23 +224,17 @@ const DataService = {
         const seenTrackingNumbers = new Set();
         const idsToDelete = [];
 
-        // 2. 遍历数据，找出重复项
         data.forEach(item => {
             const tn = item.trackingNumber ? item.trackingNumber.trim() : null;
-            if (!tn) return; // 跳过无单号数据
-            
+            if (!tn) return; 
             if (seenTrackingNumbers.has(tn)) {
-                // 如果已经见过这个单号，说明当前这条是旧数据（因为我们是倒序遍历的）
                 idsToDelete.push(item.id);
             } else {
-                // 第一次见到这个单号，标记为已见（这是最新的一条，保留）
                 seenTrackingNumbers.add(tn);
             }
         });
 
-        // 3. 批量删除旧数据
         if (idsToDelete.length > 0) {
-            // 分批删除，防止 URL 过长
             const BATCH_SIZE = 100;
             for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
                 const batch = idsToDelete.slice(i, i + BATCH_SIZE);
@@ -182,10 +245,8 @@ const DataService = {
                 if (delError) throw delError;
             }
         }
-
         return idsToDelete.length;
     },
-    // --- 结束 ---
 
     login: async (email, password) => {
         if (!supabase) throw new Error("数据库未连接");
@@ -481,18 +542,14 @@ export default function App() {
     const clickTimeoutRef = useRef(null);
     const [adminSearchQuery, setAdminSearchQuery] = useState('');
     const [isSaving, setIsSaving] = useState(false); 
-    // 新增：导入加载状态
     const [isImporting, setIsImporting] = useState(false);
-    // --- [第二段] 新增：去重加载状态 ---
     const [isDeduplicating, setIsDeduplicating] = useState(false);
     
     const [apiSettings, setApiSettings] = useState(DEFAULT_SETTINGS);
     const [newOrder, setNewOrder] = useState({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' });
     
-    // 新增：安全码输入状态
     const [securityCodeInput, setSecurityCodeInput] = useState('');
     
-    // 用于处理状态的多重点击计数
     const statusClickRef = useRef({ count: 0, lastTime: 0 });
 
     const showToast = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
@@ -530,14 +587,30 @@ export default function App() {
                 });
 
                 const params = new URLSearchParams(window.location.search);
+                
+                // --- [新增] 短链解析逻辑 ---
+                const shortCode = params.get('s');
                 const q = params.get('q');
-                if (q) {
+                
+                if (shortCode) {
+                    // 如果有 s 参数，去数据库换取原始查询串
+                    DataService.resolveShortLink(shortCode).then(originalQuery => {
+                        if (originalQuery) {
+                            setSearchQuery(originalQuery);
+                            handleSearch(null, originalQuery);
+                        } else {
+                            showToast("短链已失效或不存在", "error");
+                        }
+                    });
+                } else if (q) {
+                    // 旧版逻辑保持不变
                     const decodedQuery = decodeToken(q); 
                     if (decodedQuery) { 
                         setSearchQuery(decodedQuery);
                         handleSearch(null, decodedQuery); 
                     }
                 }
+                // --- [结束] 短链解析逻辑 ---
             } else {
                 console.warn("Supabase SDK 未能加载");
             }
@@ -570,7 +643,6 @@ export default function App() {
         }
     }, [fetchAdminOrders, currentView, adminViewMode]);
 
-    // 处理“当前状态”UI的连续5次点击
     const handleStatusMultiClick = (e, order) => {
         e.stopPropagation(); 
         const now = Date.now();
@@ -583,10 +655,6 @@ export default function App() {
         record.lastTime = now;
         if (record.count >= 5) {
             handleQuickCopyReply(order);
-            showToast("话术已复制");
-            if (navigator.vibrate) {
-                navigator.vibrate(200); 
-            }
             record.count = 0;
         }
     };
@@ -596,7 +664,6 @@ export default function App() {
          setConfirmModal({ type: 'clear_all' });
     };
     
-    // --- [第二段] 新增：一键去重处理函数 ---
     const handleDeduplicate = async () => {
         if (!isAdmin) return;
         if (!window.confirm("⚠️ 确定要执行去重操作吗？\n\n系统将检查所有订单，对于重复的运单号，仅保留【最后一次上传/更新】的记录，删除旧记录。\n\n此操作不可恢复！")) {
@@ -618,14 +685,11 @@ export default function App() {
             setIsDeduplicating(false);
         }
     };
-    // --- [第二段] 结束 ---
 
-    // 合并后的 executeDelete 函数
     const executeDelete = async () => { 
         if (!confirmModal) return; 
         try {
             if (confirmModal.type === 'clear_all') {
-                // 安全码校验逻辑
                 if (securityCodeInput !== 'wT357212') {
                     showToast("安全码错误，操作拒绝！", "error");
                     return;
@@ -711,12 +775,10 @@ export default function App() {
 
     const handleImportFileChange = async (e) => { const file = e.target.files[0]; if (!file) return; if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) { showToast("正在加载 Excel 解析引擎...", "success"); try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX'); const reader = new FileReader(); reader.onload = (event) => { const data = new Uint8Array(event.target.result); const workbook = window.XLSX.read(data, { type: 'array', cellDates: true }); const text = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]], { FS: " " }); setImportText(text); showToast(`Excel 解析成功！${text.split('\n').length} 行`, "success"); }; reader.readAsArrayBuffer(file); } catch (err) { showToast("解析引擎加载失败", "error"); } return; } const reader = new FileReader(); reader.onload = (event) => { setImportText(event.target.result); showToast("文件读取成功", "success"); }; reader.readAsText(file); };
     
-    // --- [核心修复] 批量导入函数：增加去重逻辑 ---
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
         
         setIsImporting(true);
-        // 使用 setTimeout 让 React 有机会先渲染 Loading UI
         await new Promise(resolve => setTimeout(resolve, 100));
 
         try {
@@ -733,7 +795,6 @@ export default function App() {
                     if (trackingNumber) { 
                         let finalCourier = courier || autoDetectCourier(trackingNumber); if (courier && !/快递|速运|物流|EMS/.test(courier)) finalCourier += '快递';
                         
-                        // 使用运单号作为 ID
                         const orderId = trackingNumber.trim();
                         newOrdersData.push({ id: orderId, recipientName: recipientName || '未知', phone: phone || '', product: product || '商品', courier: finalCourier, trackingNumber, note: '导入', timestamp: Date.now() - index, lastUpdated: Date.now() }); 
                     } 
@@ -741,10 +802,7 @@ export default function App() {
             });
 
             if (newOrdersData.length > 0) { 
-                // --- 修复开始：提交前去重 ---
-                // 解决 'ON CONFLICT DO UPDATE command cannot affect row a second time' 错误
                 const uniqueMap = new Map();
-                // 遍历数据，后出现的重复项会覆盖先出现的，保留最后一条
                 newOrdersData.forEach(item => {
                     if (item.id) {
                         uniqueMap.set(item.id, item);
@@ -752,7 +810,6 @@ export default function App() {
                 });
                 const uniqueOrdersData = Array.from(uniqueMap.values());
                 const removedCount = newOrdersData.length - uniqueOrdersData.length;
-                // --- 修复结束 ---
 
                 await DataService.batchSaveOrders(uniqueOrdersData);
                 
@@ -773,16 +830,11 @@ export default function App() {
             setIsImporting(false);
         }
     };
-    // --- [核心修复] 结束 ---
 
     const handleSaveOrder = async () => { 
         if (!isAdmin || !newOrder.trackingNumber) { showToast("无权限或信息不全", "error"); return; } 
         try { 
-            // --- 修改开始：手动录入也使用运单号作为 ID 防重 ---
-            // 如果是编辑模式，使用原 ID；如果是新增模式，使用运单号作为 ID
             const id = isEditing ? newOrder.id : newOrder.trackingNumber.trim(); 
-            // --- 修改结束 ---
-
             const updatedOrder = { ...newOrder, id };
             await DataService.saveOrder(updatedOrder);
             showToast(isEditing ? "修改成功" : "录入成功"); 
@@ -869,7 +921,9 @@ export default function App() {
         }
     };
     
-    const handleQuickCopyReply = (order) => { 
+    // --- [新增] 异步生成短链并复制 ---
+    const handleQuickCopyReply = async (order) => { 
+        showToast("正在生成短链并复制...", "success"); // 提示用户
         let realTimeStatus = order.lastApiStatus; 
         const cache = logisticsDataCache[order.id]; 
         if (cache && cache.data && Array.isArray(cache.data) && cache.data.length > 0) { 
@@ -878,12 +932,25 @@ export default function App() {
             if (sortedData.length > 0) { realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; } 
         } 
         const statusSimple = getSimplifiedStatus(realTimeStatus); 
+        
         let queryValue = order.trackingNumber;
         if (order.phone && /^\d+$/.test(order.phone)) {
             queryValue = order.phone.replace(/\D/g, '');
         }
-        const safeToken = encodeToken(queryValue);
-        const queryLink = `https://dhcx.me?q=${safeToken}`; 
+
+        let queryLink;
+        try {
+            // 尝试获取数据库短链
+            const shortCode = await DataService.getOrCreateShortLink(queryValue);
+            queryLink = `https://dhcx.me?s=${shortCode}`;
+        } catch (e) {
+            // 降级方案：如果数据库生成失败，使用旧的 base64 token
+            // [修复] 使用 warn 而不是 error，避免误导
+            console.warn("短链生成失败，自动降级为长链接:", e.message);
+            const safeToken = encodeToken(queryValue);
+            queryLink = `https://dhcx.me?q=${safeToken}`; 
+        }
+
         let templateKey = 'TRANSPORT'; 
         if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; 
         else if (statusSimple === '派件中') templateKey = 'DELIVERING'; 
@@ -891,7 +958,9 @@ export default function App() {
         else if (statusSimple === '异常件') templateKey = 'ABNORMAL'; 
         let message = DEFAULT_TEMPLATES[templateKey]; 
         message = message.replace(/{name}/g, order.recipientName || '客户').replace(/{product}/g, order.product || '商品').replace(/{courier}/g, order.courier).replace(/{no}/g, order.trackingNumber).replace(/{link}/g, queryLink).replace(/{status}/g, realTimeStatus || statusSimple); 
-        copyToClipboard(message); 
+        
+        copyToClipboard(message);
+        if (navigator.vibrate) navigator.vibrate(200);
     };
     const handleShowLogistics = (order) => { setViewingLogisticsOrder(order); fetchLogistics(order); };
     
@@ -936,7 +1005,6 @@ export default function App() {
                             <Settings onClick={() => { setAdminViewMode('settings'); }} size={20} className={adminViewMode==='settings'?'text-[#CCFF00]':'active:text-white'}/>
                         </div>
                     </div>
-                    {/* --- [核心修复] 增加底部 padding (pb-40) 以避免手机端底部导航栏遮挡内容 --- */}
                     <div className="flex-1 overflow-auto p-4 md:p-8 custom-scrollbar pb-40 md:pb-8">
                         {adminViewMode === 'dashboard' && (
                             <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 animate-in fade-in duration-500">
@@ -968,8 +1036,6 @@ export default function App() {
                                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} />
                                                 <input type="text" placeholder="搜索..." value={adminSearchQuery} onChange={(e) => setAdminSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/30 text-white placeholder-white/20 transition-all"/>
                                             </div> 
-                                            
-                                            {/* --- [第三段] 新增：PC端一键去重按钮 --- */}
                                             <button 
                                                 onClick={handleDeduplicate} 
                                                 disabled={isDeduplicating}
@@ -979,8 +1045,6 @@ export default function App() {
                                                 {isDeduplicating ? <RefreshCw size={14} className="animate-spin"/> : <Filter size={14} />} 
                                                 {isDeduplicating ? "处理中" : "去重"}
                                             </button>
-                                            {/* --- [第三段] 结束 --- */}
-                                            
                                             <button onClick={() => setShowImportModal(true)} className="hidden md:flex px-4 py-2.5 text-black rounded-lg text-xs font-bold hover:opacity-80 items-center gap-2 shrink-0" style={{ backgroundColor: apiSettings.themeColor }}><Upload size={14} /> 导入</button> 
                                             {selectedOrders.size > 0 && (<button onClick={handleBatchDeleteClick} className="px-3 py-2.5 bg-red-900/50 text-red-400 border border-red-900 rounded-lg text-xs font-bold hover:bg-red-900/80"><Trash2 size={14}/></button>)} 
                                         </div> 
@@ -1425,7 +1489,7 @@ export default function App() {
                     <ShieldCheck size={12} className="text-[#CCFF00]"/> 
                     <span>{apiSettings.footerMsg}</span>
                     <span className="w-px h-3 bg-white/10 mx-2"></span>
-                    <span className="text-white/20">V3.0 NoSound</span>
+                    <span className="text-white/20">V3.1 ShortLink</span>
                 </div>
             </div>
         </div>
