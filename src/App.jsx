@@ -793,7 +793,10 @@ export default function App() {
 
     useEffect(() => {
         const style = document.createElement('style');
-        style.innerHTML = `@keyframes blob { 0% { transform: translate(0px, 0px) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } 100% { transform: translate(0px, 0px) scale(1); } } .animate-blob { animation: blob 7s infinite; } .animation-delay-2000 { animation-delay: 2s; } .animation-delay-4000 { animation-delay: 4s; } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; } .custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; } @keyframes pulse { 0% { opacity: 0.5; transform: scale(1); } 100% { opacity: 1; transform: scale(1.5); } } @keyframes driftX { 0% { transform: translateX(0); } 100% { transform: translateX(50px); } } @keyframes driftY { 0% { transform: translateY(0); } 100% { transform: translateY(50px); } } @keyframes ping-fast { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(3); opacity: 0; } } .animate-ping-fast { animation: ping-fast 0.6s cubic-bezier(0, 0, 0.2, 1) forwards; } @keyframes particle-burst { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; } } .animate-particle-burst { animation: particle-burst 0.5s ease-out forwards; } .safe-bottom { padding-bottom: env(safe-area-inset-bottom); } .pb-safe { padding-bottom: env(safe-area-inset-bottom); } .safe-top { padding-top: env(safe-area-inset-top); }`;
+        // [修改] 注入 JetBrains Mono 字体
+        style.innerHTML = `
+            @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
+            @keyframes blob { 0% { transform: translate(0px, 0px) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } 100% { transform: translate(0px, 0px) scale(1); } } .animate-blob { animation: blob 7s infinite; } .animation-delay-2000 { animation-delay: 2s; } .animation-delay-4000 { animation-delay: 4s; } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; } .custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; } @keyframes pulse { 0% { opacity: 0.5; transform: scale(1); } 100% { opacity: 1; transform: scale(1.5); } } @keyframes driftX { 0% { transform: translateX(0); } 100% { transform: translateX(50px); } } @keyframes driftY { 0% { transform: translateY(0); } 100% { transform: translateY(50px); } } @keyframes ping-fast { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(3); opacity: 0; } } .animate-ping-fast { animation: ping-fast 0.6s cubic-bezier(0, 0, 0.2, 1) forwards; } @keyframes particle-burst { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; } } .animate-particle-burst { animation: particle-burst 0.5s ease-out forwards; } .safe-bottom { padding-bottom: env(safe-area-inset-bottom); } .pb-safe { padding-bottom: env(safe-area-inset-bottom); } .safe-top { padding-top: env(safe-area-inset-top); }`;
         document.head.appendChild(style); return () => { document.head.removeChild(style); };
     }, []);
 
@@ -1515,93 +1518,107 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* [修改] 二维码 Modal - 登机牌样式 */}
+                {/* [修改] 二维码 Modal - 仿制 DHCX 白色卡片样式 */}
                 {qrCodeModal.show && (
                     <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={() => setQrCodeModal({...qrCodeModal, show: false})}>
                         <div 
-                            ref={cardRef} // [重要] 绑定 ref 用于截图
+                            ref={cardRef} 
                             className="w-full max-w-[320px] relative overflow-hidden bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300" 
                             onClick={e => e.stopPropagation()}
                         >
-                             {/* 顶部装饰条 */}
-                            <div className="h-2 w-full" style={{ backgroundColor: apiSettings.themeColor }}></div>
-                            
-                            {/* 关闭按钮 (绝对定位，截图时会被包含，如果想隐藏需特殊处理，这里保留作为"票据"一部分) */}
-                            <button onClick={() => setQrCodeModal({...qrCodeModal, show: false})} className="absolute top-4 right-4 z-20 text-black/20 hover:text-black transition-colors"><X size={20}/></button>
+                            {/* 顶部装饰条 */}
+                            <div className="h-1.5 w-full" style={{ backgroundColor: apiSettings.themeColor }}></div>
 
-                            {/* 主要内容区 */}
-                            <div className="p-6 pb-4 relative z-10">
-                                <div className="flex items-center gap-2 mb-4 opacity-80">
-                                    <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">前往</div> {/* GO -> 前往 */}
-                                    <div className="text-xs font-bold text-black tracking-widest uppercase">{apiSettings.siteName}</div>
+                            <div className="p-6 pb-2 relative z-10">
+                                {/* Header */}
+                                <div className="flex justify-between items-start mb-8">
+                                    <div>
+                                        <h1 className="text-3xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                                            DHCX<span style={{ color: apiSettings.themeColor }}>.</span>
+                                        </h1>
+                                        <p className="text-[9px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
+                                    </div>
+                                    
+                                    <div className="bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
+                                        <span className="text-[10px] font-bold tracking-wider">前往官网</span>
+                                        <ArrowRight size={10} className="opacity-70" />
+                                    </div>
                                 </div>
                                 
-                                <h3 className="text-2xl font-black text-black leading-none mb-1">物流追踪</h3> {/* LOGISTICS -> 物流追踪 */}
-                                <div className="text-xs font-mono text-black/40 uppercase tracking-[0.2em] mb-6">专属查询票据</div> {/* TRACKING TICKET -> 专属查询票据 */}
-
-                                {/* 信息网格 */}
-                                {qrCodeModal.info ? (
-                                    <div className="grid grid-cols-2 gap-y-4 gap-x-2 mb-6">
+                                <div className="border-t-2 border-black mb-6"></div>
+                                
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-baseline">
                                         <div>
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">收件人</div> {/* RECIPIENT -> 收件人 */}
-                                            {/* [优化] 添加 leading-tight 确保截图行高稳定 */}
-                                            <div className="text-sm font-bold text-black truncate leading-tight">{qrCodeModal.info.name}</div>
+                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">RECEIVER / 收件人</div>
+                                            <div className="text-base font-bold text-black">{qrCodeModal.info?.name}</div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">商品详情</div> {/* PRODUCT -> 商品详情 */}
-                                            {/* [优化] 添加 leading-tight */}
-                                            <div className="text-sm font-bold text-black truncate leading-tight">{qrCodeModal.info.product}</div>
-                                        </div>
-                                        <div className="col-span-2 pt-3 border-t border-dashed border-black/10">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码 ({qrCodeModal.info.courier})</div> {/* [优化] 添加快递公司名称 */}
-                                            <div className="font-mono text-lg font-black text-black tracking-wider break-all leading-tight">{qrCodeModal.info.trackingNumber}</div>
+                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">COURIER / 快递</div>
+                                            <div className="text-base font-black text-black font-mono">{qrCodeModal.info?.courier}</div>
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="mb-6 p-4 bg-gray-50 rounded-xl text-center text-xs font-mono break-all">{qrCodeModal.title}</div>
-                                )}
-                            </div>
 
-                            {/* 虚线分割与半圆缺口 */}
-                            <div className="relative w-full h-8 flex items-center justify-center">
-                                <div className="absolute left-[-12px] w-6 h-6 rounded-full bg-[#111] z-10"></div> {/* 左缺口，颜色需匹配 Modal 背景色(这里是黑色遮罩) */}
-                                <div className="absolute right-[-12px] w-6 h-6 rounded-full bg-[#111] z-10"></div> {/* 右缺口 */}
-                                <div className="w-full border-t-2 border-dashed border-black/10 mx-4"></div>
-                            </div>
+                                    <div>
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">ITEM / 商品</div>
+                                        <div className="text-sm font-bold text-black break-words leading-relaxed border-l-2 pl-3" style={{ borderColor: apiSettings.themeColor }}>
+                                            {qrCodeModal.info?.product}
+                                        </div>
+                                    </div>
 
-                            {/* 二维码区域 */}
-                            <div className="p-6 pt-2 bg-gradient-to-b from-white to-gray-50 flex flex-col items-center">
-                                <div className="w-48 h-48 bg-white p-2 rounded-xl border border-black/5 shadow-sm mb-4 relative">
-                                    {qrCodeModal.loading ? (
-                                        <div className="w-full h-full flex items-center justify-center"><RefreshCw size={24} className="animate-spin text-black/20"/></div>
-                                    ) : (
-                                        <>
-                                            <img src={qrCodeModal.url} alt="QR Code" className="w-full h-full object-contain mix-blend-multiply" />
-                                            {/* 品牌水印 */}
-                                            <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none">
-                                                <div className="text-4xl font-black text-black -rotate-45">DHCX</div>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                                <div className="text-[10px] font-mono text-black/30 text-center leading-relaxed">
-                                    扫码即可实时追踪<br/> {/* SCAN QR CODE TO TRACK -> 扫码即可实时追踪 */}
-                                    {apiSettings.siteName} 专属服务 {/* SERVICE -> 专属服务 */}
+                                    <div className="bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">TRACKING NO. / 单号</div>
+                                        <div className="font-mono text-xl font-black text-black tracking-tight break-all leading-none">
+                                            {qrCodeModal.info?.trackingNumber}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* [优化] 底部操作条：PC端隐藏，移动端保留复制按钮作为 fallback */}
-                            <div className="absolute bottom-4 right-4 z-20 md:hidden">
+                            {/* Cutout Divider */}
+                            <div className="relative w-full h-6 flex items-center justify-center mt-2">
+                                <div className="absolute left-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div> 
+                                <div className="absolute right-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div>
+                                <div className="w-full border-t border-dashed border-gray-300 mx-4"></div>
+                            </div>
+
+                            {/* Footer Section */}
+                            <div className="p-6 pt-2 bg-white flex flex-col items-center">
+                                <div className="flex gap-4 items-center w-full">
+                                    <div className="w-20 h-20 bg-white p-1 rounded-lg border border-black/5 shadow-sm shrink-0">
+                                        {qrCodeModal.loading ? (
+                                            <div className="w-full h-full flex items-center justify-center"><RefreshCw size={24} className="animate-spin text-black/20"/></div>
+                                        ) : (
+                                            <img src={qrCodeModal.url} alt="QR" className="w-full h-full object-contain mix-blend-multiply" crossOrigin="anonymous" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 flex flex-col justify-center h-20">
+                                        <div className="text-xs font-bold text-black mb-1">扫码实时追踪</div>
+                                        <div className="text-[10px] text-gray-400 leading-tight">请使用微信或浏览器扫码<br/>获取最新物流动态</div>
+                                        {/* Decorative bar */}
+                                        <div className="h-3 w-32 mt-2 opacity-20" style={{ backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2r9//38gYGAEESAAEGAAGRgE+bRsBPwAAAAASUVORK5CYII=")`, backgroundRepeat: 'repeat' }}></div>
+                                    </div>
+                                </div>
+                                
+                                <div className="mt-6 text-[9px] font-mono text-gray-300 w-full text-center">
+                                    ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
+                                </div>
+                            </div>
+
+                             {/* PC 端底部提示 (自动复制提示) */}
+                             <div className="absolute bottom-4 left-0 right-0 text-center text-xs font-mono text-gray-300 hidden md:block">
+                                {isCopyingCard ? "正在生成..." : "卡片已生成"}
+                             </div>
+
+                             {/* 移动端手动复制按钮 */}
+                             <div className="absolute bottom-4 right-4 z-20 md:hidden">
                                 <button onClick={handleCopyCardImage} disabled={isCopyingCard} className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
                                     {isCopyingCard ? <RefreshCw size={16} className="animate-spin"/> : <Copy size={16}/>}
                                 </button>
                             </div>
+                            
+                            <button onClick={() => setQrCodeModal({...qrCodeModal, show: false})} className="absolute top-4 right-4 z-20 text-gray-400 hover:text-black transition-colors"><X size={20}/></button>
                         </div>
-
-                         {/* PC 端底部提示 (自动复制提示) */}
-                         <div className="absolute bottom-10 text-white/50 text-xs font-mono hidden md:block">
-                            {isCopyingCard ? "正在生成卡片..." : "卡片已自动复制到剪贴板，可长按/右键粘贴。"} {/* [优化] 增加长按/右键粘贴提示 */}
-                         </div>
                     </div>
                 )}
 
@@ -1724,80 +1741,98 @@ export default function App() {
                             onClick={e => e.stopPropagation()}
                         >
                             {/* 顶部装饰条 */}
-                            <div className="h-2 w-full" style={{ backgroundColor: apiSettings.themeColor }}></div>
-                            
-                            <button onClick={() => setQrCodeModal({...qrCodeModal, show: false})} className="absolute top-4 right-4 z-20 text-black/20 hover:text-black transition-colors"><X size={20}/></button>
+                            <div className="h-1.5 w-full" style={{ backgroundColor: apiSettings.themeColor }}></div>
 
-                            <div className="p-6 pb-4 relative z-10">
-                                <div className="flex items-center gap-2 mb-4 opacity-80">
-                                    <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">前往</div> {/* GO -> 前往 */}
-                                    <div className="text-xs font-bold text-black tracking-widest uppercase">{apiSettings.siteName}</div>
+                            <div className="p-6 pb-2 relative z-10">
+                                {/* Header */}
+                                <div className="flex justify-between items-start mb-8">
+                                    <div>
+                                        <h1 className="text-3xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                                            DHCX<span style={{ color: apiSettings.themeColor }}>.</span>
+                                        </h1>
+                                        <p className="text-[9px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
+                                    </div>
+                                    
+                                    <div className="bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
+                                        <span className="text-[10px] font-bold tracking-wider">前往官网</span>
+                                        <ArrowRight size={10} className="opacity-70" />
+                                    </div>
                                 </div>
                                 
-                                <h3 className="text-2xl font-black text-black leading-none mb-1">物流追踪</h3> {/* LOGISTICS -> 物流追踪 */}
-                                <div className="text-xs font-mono text-black/40 uppercase tracking-[0.2em] mb-6">专属查询票据</div> {/* TRACKING TICKET -> 专属查询票据 */}
-
-                                {qrCodeModal.info ? (
-                                    <div className="grid grid-cols-2 gap-y-4 gap-x-2 mb-6">
+                                <div className="border-t-2 border-black mb-6"></div>
+                                
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-baseline">
                                         <div>
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">收件人</div> {/* RECIPIENT -> 收件人 */}
-                                            {/* [优化] 添加 leading-tight */}
-                                            <div className="text-sm font-bold text-black truncate leading-tight">{qrCodeModal.info.name}</div>
+                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">RECEIVER / 收件人</div>
+                                            <div className="text-base font-bold text-black">{qrCodeModal.info?.name}</div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">商品详情</div> {/* PRODUCT -> 商品详情 */}
-                                            {/* [优化] 添加 leading-tight */}
-                                            <div className="text-sm font-bold text-black truncate leading-tight">{qrCodeModal.info.product}</div>
-                                        </div>
-                                        <div className="col-span-2 pt-3 border-t border-dashed border-black/10">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码 ({qrCodeModal.info.courier})</div> {/* [优化] 添加快递公司名称 */}
-                                            <div className="font-mono text-lg font-black text-black tracking-wider break-all leading-tight">{qrCodeModal.info.trackingNumber}</div>
+                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">COURIER / 快递</div>
+                                            <div className="text-base font-black text-black font-mono">{qrCodeModal.info?.courier}</div>
                                         </div>
                                     </div>
-                                ) : (
-                                    <div className="mb-6 p-4 bg-gray-50 rounded-xl text-center text-xs font-mono break-all">{qrCodeModal.title}</div>
-                                )}
-                            </div>
 
-                            {/* 虚线分割与半圆缺口 */}
-                            <div className="relative w-full h-8 flex items-center justify-center">
-                                <div className="absolute left-[-12px] w-6 h-6 rounded-full bg-[#111] z-10"></div> 
-                                <div className="absolute right-[-12px] w-6 h-6 rounded-full bg-[#111] z-10"></div> 
-                                <div className="w-full border-t-2 border-dashed border-black/10 mx-4"></div>
-                            </div>
+                                    <div>
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">ITEM / 商品</div>
+                                        <div className="text-sm font-bold text-black break-words leading-relaxed border-l-2 pl-3" style={{ borderColor: apiSettings.themeColor }}>
+                                            {qrCodeModal.info?.product}
+                                        </div>
+                                    </div>
 
-                            {/* 二维码区域 */}
-                            <div className="p-6 pt-2 bg-gradient-to-b from-white to-gray-50 flex flex-col items-center">
-                                <div className="w-48 h-48 bg-white p-2 rounded-xl border border-black/5 shadow-sm mb-4 relative">
-                                    {qrCodeModal.loading ? (
-                                        <div className="w-full h-full flex items-center justify-center"><RefreshCw size={24} className="animate-spin text-black/20"/></div>
-                                    ) : (
-                                        <>
-                                            <img src={qrCodeModal.url} alt="QR Code" className="w-full h-full object-contain mix-blend-multiply" />
-                                            <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none">
-                                                <div className="text-4xl font-black text-black -rotate-45">DHCX</div>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                                <div className="text-[10px] font-mono text-black/30 text-center leading-relaxed">
-                                    扫码即可实时追踪<br/> {/* SCAN QR CODE TO TRACK -> 扫码即可实时追踪 */}
-                                    {apiSettings.siteName} 专属服务 {/* SERVICE -> 专属服务 */}
+                                    <div className="bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">TRACKING NO. / 单号</div>
+                                        <div className="font-mono text-xl font-black text-black tracking-tight break-all leading-none">
+                                            {qrCodeModal.info?.trackingNumber}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* [优化] 底部操作条：PC端隐藏，移动端保留复制按钮作为 fallback */}
-                            <div className="absolute bottom-4 right-4 z-20 md:hidden">
+                            {/* Cutout Divider */}
+                            <div className="relative w-full h-6 flex items-center justify-center mt-2">
+                                <div className="absolute left-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div> 
+                                <div className="absolute right-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div>
+                                <div className="w-full border-t border-dashed border-gray-300 mx-4"></div>
+                            </div>
+
+                            {/* Footer Section */}
+                            <div className="p-6 pt-2 bg-white flex flex-col items-center">
+                                <div className="flex gap-4 items-center w-full">
+                                    <div className="w-20 h-20 bg-white p-1 rounded-lg border border-black/5 shadow-sm shrink-0">
+                                        {qrCodeModal.loading ? (
+                                            <div className="w-full h-full flex items-center justify-center"><RefreshCw size={24} className="animate-spin text-black/20"/></div>
+                                        ) : (
+                                            <img src={qrCodeModal.url} alt="QR" className="w-full h-full object-contain mix-blend-multiply" crossOrigin="anonymous" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1 flex flex-col justify-center h-20">
+                                        <div className="text-xs font-bold text-black mb-1">扫码实时追踪</div>
+                                        <div className="text-[10px] text-gray-400 leading-tight">请使用微信或浏览器扫码<br/>获取最新物流动态</div>
+                                        {/* Decorative bar */}
+                                        <div className="h-3 w-32 mt-2 opacity-20" style={{ backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2r9//38gYGAEESAAEGAAGRgE+bRsBPwAAAAASUVORK5CYII=")`, backgroundRepeat: 'repeat' }}></div>
+                                    </div>
+                                </div>
+                                
+                                <div className="mt-6 text-[9px] font-mono text-gray-300 w-full text-center">
+                                    ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
+                                </div>
+                            </div>
+
+                             {/* PC 端底部提示 (自动复制提示) */}
+                             <div className="absolute bottom-4 left-0 right-0 text-center text-xs font-mono text-gray-300 hidden md:block">
+                                {isCopyingCard ? "正在生成..." : "卡片已生成"}
+                             </div>
+
+                             {/* 移动端手动复制按钮 */}
+                             <div className="absolute bottom-4 right-4 z-20 md:hidden">
                                 <button onClick={handleCopyCardImage} disabled={isCopyingCard} className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
                                     {isCopyingCard ? <RefreshCw size={16} className="animate-spin"/> : <Copy size={16}/>}
                                 </button>
                             </div>
+                            
+                            <button onClick={() => setQrCodeModal({...qrCodeModal, show: false})} className="absolute top-4 right-4 z-20 text-gray-400 hover:text-black transition-colors"><X size={20}/></button>
                         </div>
-
-                         {/* PC 端底部提示 (自动复制提示) */}
-                         <div className="absolute bottom-10 text-white/50 text-xs font-mono hidden md:block">
-                            {isCopyingCard ? "正在生成卡片..." : "卡片已自动复制到剪贴板，可长按/右键粘贴。"} {/* [优化] 增加长按/右键粘贴提示 */}
-                         </div>
                     </div>
             )}
         </div>
