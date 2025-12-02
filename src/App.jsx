@@ -592,25 +592,23 @@ export default function App() {
                 let shortCode = params.get('s');
                 const q = params.get('q');
                 
-                // 1. 尝试从 Hash 获取 (新增：解决 404 问题的关键)
-                // 浏览器请求 dhcx.me/#abc 时，服务器只看到 dhcx.me，不会报 404
+                // 1. [新增] 尝试从路径获取 (dhcx.me/xxxxx 这种格式)
+                // 如果服务器配置了重写规则，这里可以直接捕获到
+                if (!shortCode && !q) {
+                    const pathSegment = window.location.pathname.slice(1); // 去掉开头的 /
+                    if (pathSegment && /^[a-zA-Z0-9]+$/.test(pathSegment)) {
+                        shortCode = pathSegment;
+                    }
+                }
+
+                // 2. 尝试从 Hash 获取 (兼容 #xxxxx 和 #/xxxxx)
                 if (!shortCode && !q) {
                     const hash = window.location.hash;
                     if (hash && hash.length > 1) {
-                        // 兼容 #xxxxx 和 #/xxxxx 两种格式
                         const code = hash.replace(/^#\/?/, '');
                         if (code && /^[a-zA-Z0-9]+$/.test(code)) {
                             shortCode = code;
                         }
-                    }
-                }
-
-                // 2. 如果 URL 参数和 Hash 没找到，尝试从路径获取 (旧版兼容)
-                if (!shortCode && !q) {
-                    const pathSegment = window.location.pathname.slice(1);
-                    // 简单的校验：非空且仅包含字母数字
-                    if (pathSegment && /^[a-zA-Z0-9]+$/.test(pathSegment)) {
-                        shortCode = pathSegment;
                     }
                 }
                 
@@ -1018,9 +1016,9 @@ export default function App() {
             // 尝试获取数据库短链
             const shortCode = await DataService.getOrCreateShortLink(queryValue);
             
-            // [修改] 链接格式改为 dhcx.me/#xxxxx 
-            // 加入 '#' 号是为了利用 Hash 路由特性，防止服务器返回 404 错误
-            queryLink = `dhcx.me/#${shortCode}`; 
+            // [修改] 链接格式改为 dhcx.me/xxxxx 
+            // 重要：为了不报 404，服务器必须将所有未找到的路径重定向到 index.html (SPA Fallback)
+            queryLink = `dhcx.me/${shortCode}`; 
         } catch (e) {
             // 降级方案
             console.warn("短链生成失败，自动降级为长链接:", e.message);
