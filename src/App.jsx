@@ -499,7 +499,7 @@ const getSimplifiedStatus = (apiStatus) => {
     if (!apiStatus) return '待揽收';
     const s = String(apiStatus).toUpperCase();
 
-    // [修复] 检查是否包含"暂无轨迹"或"请稍后再试"等表示信息缺失的关键词
+    // [修复] 检查是否包含"暂无轨迹"或"待揽收"等表示信息缺失的关键词
     if (s.includes('待揽收') || s.includes('WAIT_ACCEPT') || s.includes('暂无轨迹') || s.includes('稍后再试') || s.includes('暂无详细轨迹') || s.includes('未找到')) return '待揽收';
 
     if (s.includes('SIGN') || s.includes('签收') || s.includes('取件')) return '已签收';
@@ -521,7 +521,7 @@ const formatLogisticsTime = (val) => {
 
 const parseLogisticsDate = (val) => { if (!val) return new Date(0); const formatted = formatLogisticsTime(val); let parseStr = formatted.replace(/-/g, '/'); if (!/^\d{4}/.test(parseStr)) parseStr = `${new Date().getFullYear()}/${parseStr}`; const date = new Date(parseStr); return isNaN(date.getTime()) ? new Date(0) : date; };
 const translateStatus = (code) => STATUS_MAP[code] || code;
-const autoDetectCourier = (number) => { if (!number) return '通用快递'; const n = String(number).toUpperCase(); if (n.startsWith('SF')) return '顺丰速运'; if (n.startsWith('JD')) return '京东物流'; if (n.startsWith('YT') || n.startsWith('8')) return '圆通速递'; if (n.startsWith('7') || n.startsWith('6')) return '中通快递'; if (n.startsWith('3') || n.startsWith('4')) return '韵达速递'; if (n.startsWith('JTS')) return '极兔速递'; if (n.startsWith('EMS') || n.startsWith('E')) return 'EMS'; if (n.startsWith('77')) return '申通快递'; return '通用快递'; };
+const autoDetectCourier = (number) => { if (!number) return '通用快递'; const n = String(number).toUpperCase(); if (n.startsWith('SF')) return '顺丰速运'; if (n.startsWith('JD')) return '京东物流'; if (n.startsWith('YT') || n.startsWith('8')) return '圆通速递'; if (n.startsWith('ZTO') || n.startsWith('7') || n.startsWith('6')) return '中通快递'; if (n.startsWith('YD') || n.startsWith('3') || n.startsWith('4')) return '韵达速递'; if (n.startsWith('JTS')) return '极兔速递'; if (n.startsWith('EMS') || n.startsWith('E')) return 'EMS'; if (n.startsWith('STO') || n.startsWith('77')) return '申通快递'; return '通用快递'; };
 const getMockLogisticsData = (number, courier, errorMsg = "API 失败，已切换为演示数据") => { const now = new Date(); const oneDay = 24 * 60 * 60 * 1000; return [ { time: now.getTime(), status: `【系统提示】${errorMsg}。已自动切换为演示数据。` }, { time: now.getTime() - 1000 * 60 * 30, status: "【运输中】快件已到达 目的地转运中心" }, { time: now.getTime() - oneDay, status: "【运输中】快件已发往 目的地转运中心" }, ]; };
 const STORAGE_KEY = 'sneaker.dh.cx_search_log';
 const getSearchHistory = () => { try { const log = localStorage.getItem(STORAGE_KEY); return log ? log.split(',').filter(item => item.trim() !== '') : []; } catch (e) { return []; } };
@@ -553,7 +553,8 @@ export default function App() {
     const [logisticsDataCache, setLogisticsDataCache] = useState({});
     const [isAdmin, setIsAdmin] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [selectedOrders, setSelectedOrders] = useState(new Set());
+    // [修复] 修正 useState 初始化 Set 的语法错误：使用函数初始化
+    const [selectedOrders, setSelectedOrders] = useState(() => new Set());
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [totalOrdersCount, setTotalOrdersCount] = useState(0); 
@@ -565,7 +566,7 @@ export default function App() {
     const [confirmModal, setConfirmModal] = useState(null); 
     const [showImportModal, setShowImportModal] = useState(false);
     // [新增] 二维码弹窗状态
-    const [qrCodeModal, setQrCodeModal] = useState({ show: false, url: '', title: '', loading: false });
+    const [qrCodeModal, setQrCodeModal] = useState({ show: false, url: '', title: '', info: null, loading: false });
     const [importText, setImportText] = useState(''); 
     const [importMode, setImportMode] = useState('append');
     const [adminUsername, setAdminUsername] = useState(''); 
@@ -1025,7 +1026,7 @@ export default function App() {
             if (isSuccess) { 
                 let rawList = result.data || result.list || result.traces || result.Traces || result.logisticsTraceDetailList || [];
                 if (!Array.isArray(rawList) && typeof rawList === 'object') { rawList = rawList.list || rawList.traces || rawList.Traces || []; }
-                if (!Array.isArray(rawList) || rawList.length === 0) { rawList = [{ time: Date.now(), status: "暂无详细轨迹，请稍后再试" }]; }
+                if (!ArrayisArray(rawList) || rawList.length === 0) { rawList = [{ time: Date.now(), status: "暂无详细轨迹，请稍后再试" }]; }
                 const list = rawList.map(item => ({ time: item.time || item.ftime || item.AcceptTime || item.time_stamp || Date.now(), status: item.status || item.context || item.desc || item.AcceptStation || "未知状态" }));
                 setLogisticsDataCache(prev => ({ ...prev, [order.id]: { loading: false, data: list, error: null } }));
             } else { 
@@ -1125,14 +1126,14 @@ export default function App() {
             // [修复] 关键修复：强制等待所有字体加载完毕后再截图
             await document.fonts.ready;
 
-            // 额外给一个小延迟，确保渲染队列清空
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // [优化] 增加等待时间至 500ms，以确保所有字体加载和布局稳定，解决文字错位问题
+            await new Promise(resolve => setTimeout(resolve, 500));
 
             // 2. 截图配置
             const canvas = await window.html2canvas(cardRef.current, {
                 backgroundColor: null, 
                 useCORS: true, 
-                scale: 2, // 高清
+                scale: 3, // [优化] 提高截图分辨率至 3x，解决图片不够高清的问题
                 logging: false,
                 // [修复] 尝试修正文字渲染位置偏移（部分浏览器有效）
                 letterRendering: true, 
@@ -1195,7 +1196,7 @@ export default function App() {
         const info = {
             name: order.recipientName,
             product: order.product,
-            courier: order.courier,
+            courier: order.courier, // [新增] 快递公司名称
             trackingNumber: order.trackingNumber
         };
 
@@ -1229,14 +1230,14 @@ export default function App() {
                     loading: false 
                 });
                 
-                // [修复] 增加缓冲时间到 2000ms (2秒)，确保 DOM 渲染和字体加载完成
+                // [优化] 自动截图：增加缓冲时间到 2000ms (2秒)，确保 DOM 渲染和字体加载完成，并自动触发截图
                 setTimeout(() => {
                     handleCopyCardImage();
                 }, 2000);
             };
             img.onerror = () => {
                  // Fallback if API fails (rare, but good practice)
-                 setQrCodeModal({ show: false, url: '', title: '', loading: false });
+                 setQrCodeModal({ show: false, url: '', title: '', info: null, loading: false });
                  showToast("二维码生成服务繁忙", "error");
             };
             img.src = apiUrl;
@@ -1244,7 +1245,7 @@ export default function App() {
         } catch (e) {
             console.error("二维码生成失败", e);
             showToast("生成失败: " + e.message, "error");
-            setQrCodeModal({ show: false, url: '', title: '', loading: false });
+            setQrCodeModal({ show: false, url: '', title: '', info: null, loading: false });
         }
     };
 
@@ -1547,7 +1548,7 @@ export default function App() {
                                             <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.product}</div>
                                         </div>
                                         <div className="col-span-2 pt-3 border-t border-dashed border-black/10">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码</div> {/* TRACKING NO. -> 运单号码 */}
+                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码 ({qrCodeModal.info.courier})</div> {/* [优化] 添加快递公司名称 */}
                                             <div className="font-mono text-lg font-black text-black tracking-wider break-all leading-tight">{qrCodeModal.info.trackingNumber}</div>
                                         </div>
                                     </div>
@@ -1584,7 +1585,7 @@ export default function App() {
                                 </div>
                             </div>
 
-                            {/* 底部操作条 (截图时可能需要隐藏，或者做成卡片一部分) */}
+                            {/* 底部操作条 (PC端隐藏，移动端保留复制按钮作为 fallback) */}
                             <div className="absolute bottom-4 right-4 z-20 md:hidden">
                                 <button onClick={handleCopyCardImage} disabled={isCopyingCard} className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
                                     {isCopyingCard ? <RefreshCw size={16} className="animate-spin"/> : <Copy size={16}/>}
@@ -1592,9 +1593,9 @@ export default function App() {
                             </div>
                         </div>
 
-                         {/* PC 端底部提示 */}
+                         {/* PC 端底部提示 (自动复制提示) */}
                          <div className="absolute bottom-10 text-white/50 text-xs font-mono hidden md:block">
-                            {isCopyingCard ? "正在生成卡片..." : "卡片已自动复制到剪贴板"} {/* English -> Chinese */}
+                            {isCopyingCard ? "正在生成卡片..." : "卡片已自动复制到剪贴板，可长按/右键粘贴。"} {/* [优化] 增加长按/右键粘贴提示 */}
                          </div>
                     </div>
                 )}
@@ -1742,7 +1743,7 @@ export default function App() {
                                             <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.product}</div>
                                         </div>
                                         <div className="col-span-2 pt-3 border-t border-dashed border-black/10">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码</div> {/* TRACKING NO. -> 运单号码 */}
+                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码 ({qrCodeModal.info.courier})</div> {/* [优化] 添加快递公司名称 */}
                                             <div className="font-mono text-lg font-black text-black tracking-wider break-all leading-tight">{qrCodeModal.info.trackingNumber}</div>
                                         </div>
                                     </div>
@@ -1751,12 +1752,14 @@ export default function App() {
                                 )}
                             </div>
 
+                            {/* 虚线分割与半圆缺口 */}
                             <div className="relative w-full h-8 flex items-center justify-center">
                                 <div className="absolute left-[-12px] w-6 h-6 rounded-full bg-[#111] z-10"></div> 
                                 <div className="absolute right-[-12px] w-6 h-6 rounded-full bg-[#111] z-10"></div> 
                                 <div className="w-full border-t-2 border-dashed border-black/10 mx-4"></div>
                             </div>
 
+                            {/* 二维码区域 */}
                             <div className="p-6 pt-2 bg-gradient-to-b from-white to-gray-50 flex flex-col items-center">
                                 <div className="w-48 h-48 bg-white p-2 rounded-xl border border-black/5 shadow-sm mb-4 relative">
                                     {qrCodeModal.loading ? (
@@ -1776,6 +1779,7 @@ export default function App() {
                                 </div>
                             </div>
 
+                            {/* [优化] 底部操作条：PC端隐藏，移动端保留复制按钮作为 fallback */}
                             <div className="absolute bottom-4 right-4 z-20 md:hidden">
                                 <button onClick={handleCopyCardImage} disabled={isCopyingCard} className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
                                     {isCopyingCard ? <RefreshCw size={16} className="animate-spin"/> : <Copy size={16}/>}
@@ -1783,9 +1787,9 @@ export default function App() {
                             </div>
                         </div>
 
-                         {/* PC 端底部提示 */}
+                         {/* PC 端底部提示 (自动复制提示) */}
                          <div className="absolute bottom-10 text-white/50 text-xs font-mono hidden md:block">
-                            {isCopyingCard ? "正在生成卡片..." : "卡片已自动复制到剪贴板"} {/* English -> Chinese */}
+                            {isCopyingCard ? "正在生成卡片..." : "卡片已自动复制到剪贴板，可长按/右键粘贴。"} {/* [优化] 增加长按/右键粘贴提示 */}
                          </div>
                     </div>
             )}
