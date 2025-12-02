@@ -1116,81 +1116,51 @@ export default function App() {
         });
     };
 
-    // [修改] 卡片截图复制功能 - 移除自动下载降级，仅提示手动保存
+    // [修改] 卡片截图复制功能 - 改用 SnapDOM 模式
     const handleCopyCardImage = async () => {
         if (!cardRef.current || isCopyingCard) return;
         setIsCopyingCard(true);
-        showToast("正在生成高清卡片...", "success");
+        showToast("正在生成高清卡片 (SnapDOM)...", "success");
 
         try {
-            // 1. 动态加载 html2canvas
-            await loadScript('https://html2canvas.hertzen.com/dist/html2canvas.min.js', 'html2canvas');
+            // 1. 动态加载 SnapDOM
+            // 文档: https://github.com/zumerlab/snapdom
+            await loadScript('https://cdn.jsdelivr.net/npm/@zumer/snapdom/dist/snapdom.min.js', 'snapdom');
             
-            // [修复] 关键修复：强制等待所有字体加载完毕后再截图
+            // [修复] 强制等待字体加载
             await document.fonts.ready;
-
-            // [优化] 增加等待时间至 500ms，以确保所有字体加载和布局稳定，解决文字错位问题
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // 2. 截图配置
-            const canvas = await window.html2canvas(cardRef.current, {
-                backgroundColor: null, 
-                useCORS: true, 
-                scale: 3, // [优化] 提高截图分辨率至 3x，解决图片不够高清的问题
-                logging: false,
-                // [关键修复] 删除 letterRendering: true 以修复中文字符错位问题
-                // letterRendering: true, 
-
-                // [新增] 修正滚动条导致的偏移
-                scrollY: 0,
-                scrollX: 0,
-
-                // [新增] 截图瞬间移除可能干扰的动画
-                onclone: (clonedDoc) => {
-                    const clonedCard = clonedDoc.querySelector('[class*="w-full max-w-[320px]"]');
-                    if (clonedCard) {
-                        const elements = clonedCard.querySelectorAll('*');
-                        elements.forEach(el => {
-                            el.style.transform = 'none';
-                            el.style.animation = 'none';
-                            el.style.transition = 'none';
-                        });
-                    }
-                }
+            // 2. 生成 Blob (SnapDOM 原生支持 scale 参数)
+            // SnapDOM is faster and handles styles better than html2canvas
+            const blob = await window.snapdom.toBlob(cardRef.current, { 
+                scale: 3, // 3x 高清
+                quality: 1.0,
+                bgcolor: '#ffffff' // 强制白底
             });
 
-            // 3. 转 Blob 并写入剪贴板
-            canvas.toBlob(async (blob) => {
-                if (!blob) {
-                    showToast("图片生成失败", "error");
-                    setIsCopyingCard(false);
-                    return;
+            if (!blob) throw new Error("Blob generation failed");
+
+            // 3. 写入剪贴板
+            try {
+                if (typeof navigator.clipboard === 'undefined' || typeof navigator.clipboard.write === 'undefined') {
+                    throw new Error("Clipboard API not available");
                 }
                 
-                try {
-                    // 尝试写入剪贴板
-                    if (typeof navigator.clipboard === 'undefined' || typeof navigator.clipboard.write === 'undefined') {
-                        throw new Error("Clipboard API not available");
-                    }
-                    
-                    await navigator.clipboard.write([
-                        new ClipboardItem({ 'image/png': blob })
-                    ]);
-                    showToast("卡片已复制到剪贴板！", "success");
-                    if (navigator.vibrate) navigator.vibrate(200);
-                } catch (err) {
-                    // [修改] 降级逻辑：只提示用户手动保存/长按
-                    console.warn("Clipboard write failed, instructing manual save:", err);
-                    showToast("复制失败，请长按或右键卡片进行保存/分享", "error");
-                    
-                } finally {
-                    setIsCopyingCard(false);
-                }
-            }, 'image/png');
+                await navigator.clipboard.write([
+                    new ClipboardItem({ 'image/png': blob })
+                ]);
+                showToast("卡片已复制到剪贴板！", "success");
+                if (navigator.vibrate) navigator.vibrate(200);
+            } catch (err) {
+                console.warn("Clipboard write failed:", err);
+                showToast("复制失败，请长按或右键卡片进行保存", "error");
+            } 
 
         } catch (e) {
-            console.error("html2canvas error:", e);
-            showToast("生成卡片失败", "error");
+            console.error("SnapDOM error:", e);
+            showToast("生成失败: " + e.message, "error");
+        } finally {
             setIsCopyingCard(false);
         }
     };
