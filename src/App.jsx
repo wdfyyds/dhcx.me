@@ -7,6 +7,7 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 // --- 核心配置 ---
 const LOCAL_SETTINGS_KEY = 'dhcx.me_settings_v3_production'; 
+const SHORT_LINK_BASE_URL = 'https://dhcx.me'; // [修复] 短链固定域名，确保二维码链接正确
 
 // --- 通用工具 ---
 const loadScript = (src, globalName) => { 
@@ -384,8 +385,8 @@ const Typewriter = ({ text }) => {
                 i++; 
             } else { 
                 clearInterval(timer); 
-                setIsTyping(false); 
                 localStorage.setItem(CACHE_KEY, 'true');
+                setIsTyping(false); 
             } 
         }, 30);
         return () => clearInterval(timer);
@@ -494,8 +495,13 @@ const AcidBackground = ({ themeColor, mode = 'default', lowPowerMode = false }) 
 };
 
 const getSimplifiedStatus = (apiStatus) => {
-    if (!apiStatus || apiStatus === 'WAIT_ACCEPT' || apiStatus === '待揽收' || apiStatus === '暂无轨迹') return '待揽收';
+    // [修复] 优先判断是否为"无轨迹"或"待揽收"状态
+    if (!apiStatus) return '待揽收';
     const s = String(apiStatus).toUpperCase();
+
+    // [修复] 检查是否包含"暂无轨迹"或"请稍后再试"等表示信息缺失的关键词
+    if (s.includes('待揽收') || s.includes('WAIT_ACCEPT') || s.includes('暂无轨迹') || s.includes('稍后再试') || s.includes('暂无详细轨迹') || s.includes('未找到')) return '待揽收';
+
     if (s.includes('SIGN') || s.includes('签收') || s.includes('取件')) return '已签收';
     if (s.includes('FAIL') || s.includes('ISSUE') || s.includes('REFUSE') || s.includes('异常') || s.includes('拒收')) return '异常件';
     if (s.includes('DELIVER') || s.includes('派件') || s.includes('派送')) return '派件中';
@@ -515,7 +521,7 @@ const formatLogisticsTime = (val) => {
 
 const parseLogisticsDate = (val) => { if (!val) return new Date(0); const formatted = formatLogisticsTime(val); let parseStr = formatted.replace(/-/g, '/'); if (!/^\d{4}/.test(parseStr)) parseStr = `${new Date().getFullYear()}/${parseStr}`; const date = new Date(parseStr); return isNaN(date.getTime()) ? new Date(0) : date; };
 const translateStatus = (code) => STATUS_MAP[code] || code;
-const autoDetectCourier = (number) => { if (!number) return '通用快递'; const n = String(number).toUpperCase(); if (n.startsWith('SF')) return '顺丰速运'; if (n.startsWith('JD')) return '京东物流'; if (n.startsWith('YT') || n.startsWith('8')) return '圆通速递'; if (n.startsWith('7') || n.startsWith('6')) return '中通快递'; if (n.startsWith('3') || n.startsWith('4')) return '韵达快递'; if (n.startsWith('JTS')) return '极兔速递'; if (n.startsWith('EMS') || n.startsWith('E')) return 'EMS'; if (n.startsWith('77')) return '申通快递'; return '通用快递'; };
+const autoDetectCourier = (number) => { if (!number) return '通用快递'; const n = String(number).toUpperCase(); if (n.startsWith('SF')) return '顺丰速运'; if (n.startsWith('JD')) return '京东物流'; if (n.startsWith('YT') || n.startsWith('8')) return '圆通速递'; if (n.startsWith('7') || n.startsWith('6')) return '中通快递'; if (n.startsWith('3') || n.startsWith('4')) return '韵达速递'; if (n.startsWith('JTS')) return '极兔速递'; if (n.startsWith('EMS') || n.startsWith('E')) return 'EMS'; if (n.startsWith('77')) return '申通快递'; return '通用快递'; };
 const getMockLogisticsData = (number, courier, errorMsg = "API 失败，已切换为演示数据") => { const now = new Date(); const oneDay = 24 * 60 * 60 * 1000; return [ { time: now.getTime(), status: `【系统提示】${errorMsg}。已自动切换为演示数据。` }, { time: now.getTime() - 1000 * 60 * 30, status: "【运输中】快件已到达 目的地转运中心" }, { time: now.getTime() - oneDay, status: "【运输中】快件已发往 目的地转运中心" }, ]; };
 const STORAGE_KEY = 'sneaker.dh.cx_search_log';
 const getSearchHistory = () => { try { const log = localStorage.getItem(STORAGE_KEY); return log ? log.split(',').filter(item => item.trim() !== '') : []; } catch (e) { return []; } };
@@ -1054,11 +1060,13 @@ export default function App() {
             let queryLink;
             try {
                 const shortCode = await DataService.getOrCreateShortLink(queryValue);
-                queryLink = `dhcx.me/${shortCode}`; 
+                // [修复] 确保话术中的链接也使用 dhcx.me
+                queryLink = `${SHORT_LINK_BASE_URL}/${shortCode}`.replace('https://', '').replace('http://', ''); 
             } catch (e) {
                 console.warn("短链生成失败:", e.message);
                 const safeToken = encodeToken(queryValue);
-                queryLink = `dhcx.me?q=${safeToken}`; 
+                // 降级使用长链格式，域名保持不变
+                queryLink = `${SHORT_LINK_BASE_URL}?q=${safeToken}`.replace('https://', '').replace('http://', ''); 
             }
 
             let templateKey = 'TRANSPORT'; 
@@ -1104,22 +1112,30 @@ export default function App() {
         });
     };
 
-    // [新增] 卡片截图复制功能
+    // [修改] 卡片截图复制功能 - 增加字体等待
     const handleCopyCardImage = async () => {
         if (!cardRef.current || isCopyingCard) return;
         setIsCopyingCard(true);
-        showToast("正在生成卡片...", "success");
+        showToast("正在生成高清卡片...", "success");
 
         try {
-             // 1. 动态加载 html2canvas
+            // 1. 动态加载 html2canvas
             await loadScript('https://html2canvas.hertzen.com/dist/html2canvas.min.js', 'html2canvas');
             
+            // [修复] 关键修复：强制等待所有字体加载完毕后再截图
+            await document.fonts.ready;
+
+            // 额外给一个小延迟，确保渲染队列清空
+            await new Promise(resolve => setTimeout(resolve, 100));
+
             // 2. 截图配置
             const canvas = await window.html2canvas(cardRef.current, {
-                backgroundColor: null, // 透明背景
-                useCORS: true, // 允许跨域图片
+                backgroundColor: null, 
+                useCORS: true, 
                 scale: 2, // 高清
-                logging: false
+                logging: false,
+                // [修复] 尝试修正文字渲染位置偏移（部分浏览器有效）
+                letterRendering: true, 
             });
 
             // 3. 转 Blob 并写入剪贴板
@@ -1131,8 +1147,7 @@ export default function App() {
                 }
                 
                 try {
-                    // 尝试写入剪贴板 (需 HTTPS 或 Localhost)
-                    // Check if permission is denied explicitly first (optional, but try-catch handles it)
+                    // Check logic...
                     if (typeof navigator.clipboard === 'undefined' || typeof navigator.clipboard.write === 'undefined') {
                         throw new Error("Clipboard API not available");
                     }
@@ -1143,13 +1158,14 @@ export default function App() {
                     showToast("卡片已复制到剪贴板！", "success");
                     if (navigator.vibrate) navigator.vibrate(200);
                 } catch (err) {
-                    console.warn("Clipboard write failed (policy or permission), falling back to download:", err);
+                    console.warn("Clipboard write failed, falling back to download:", err);
                     
                     // --- 降级方案: 下载图片 ---
                     try {
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
+                        // 文件名加上时间戳
                         a.download = `DHCX_Tracking_${Date.now()}.png`;
                         document.body.appendChild(a);
                         a.click();
@@ -1173,7 +1189,7 @@ export default function App() {
     };
 
 
-    // --- [修改] 使用在线 API 生成二维码 (修复加载失败问题) ---
+    // --- [修改] 使用在线 API 生成二维码 (修复链接和加载失败问题) ---
     const handleShowQrCode = async (order) => {
         // [新增] 构造卡片信息
         const info = {
@@ -1191,21 +1207,19 @@ export default function App() {
             // 1. 获取短码 (保持原有逻辑)
             const shortCode = await DataService.getOrCreateShortLink(queryValue);
             
-            // 2. 构造跳转链接 (使用 window.location.origin 自动适配当前域名)
-            const origin = typeof window !== 'undefined' ? window.location.origin : 'https://dhcx.me';
-            const jumpUrl = `${origin}/${shortCode}`;
+            // 2. [修复] 构造跳转链接 (使用 SHORT_LINK_BASE_URL 固定的 dhcx.me 域名)
+            const jumpUrl = `${SHORT_LINK_BASE_URL}/${shortCode}`;
             
-            // 3. 构造显示的短文本
-            const host = typeof window !== 'undefined' ? window.location.host : 'dhcx.me';
-            const displayText = `${host}/${shortCode}`;
+            // 3. 构造显示的短文本 (显示为 dhcx.me/xxxx)
+            const displayText = `${SHORT_LINK_BASE_URL.replace('https://', '')}/${shortCode}`;
 
-            // 4. [修改] 对接免费 API 生成二维码 (替代不稳定的本地库)
+            // 4. [修改] 对接免费 API 生成二维码
             // 使用 api.qrserver.com 服务
             const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(jumpUrl)}&bgcolor=ffffff&color=000000&margin=10`;
             
             // 图片预加载，确保显示时已有图片
             const img = new Image();
-            img.crossOrigin = "Anonymous"; // [新增] 允许跨域，方便 html2canvas 截图
+            img.crossOrigin = "Anonymous"; // 允许跨域，方便 html2canvas 截图
             img.onload = () => {
                 setQrCodeModal({ 
                     show: true, 
@@ -1215,10 +1229,10 @@ export default function App() {
                     loading: false 
                 });
                 
-                // [新增] 尝试自动复制 (稍微延迟等待 DOM 渲染)
+                // [修复] 增加缓冲时间到 2000ms (2秒)，确保 DOM 渲染和字体加载完成
                 setTimeout(() => {
                     handleCopyCardImage();
-                }, 800);
+                }, 2000);
             };
             img.onerror = () => {
                  // Fallback if API fails (rare, but good practice)
@@ -1478,7 +1492,7 @@ export default function App() {
                                             <h4 className="text-xs font-bold text-red-500/50 uppercase mb-5 tracking-widest flex items-center gap-2"><AlertTriangle size={14}/> 危险区域</h4>
                                             <div className="bg-red-500/5 rounded-2xl p-5 border border-red-500/10">
                                                 <div className="flex items-center justify-between">
-                                                    <div><div className="text-sm font-bold text-red-400">清空所有订单数据</div><div className="text-xs text-red-400/50 mt-1">此操作将永久删除所有客户订单信息，不可恢复。</div></div>
+                                                    <div><div className="text-sm font-bold text-red-400">清空所有订单数据</div><div className="text-xs text-red-400/50 mt-1">此操作将永久删除所有订单记录，不可恢复。</div></div>
                                                     <button onClick={handleClearAllClick} className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-lg text-xs font-bold transition-colors">立即清空</button>
                                                 </div>
                                             </div>
@@ -1565,8 +1579,8 @@ export default function App() {
                                     )}
                                 </div>
                                 <div className="text-[10px] font-mono text-black/30 text-center leading-relaxed">
-                                    扫码即可实时追踪<br/> {/* SCAN QR CODE TO TRACK */}
-                                    {apiSettings.siteName} 专属服务 {/* SERVICE */}
+                                    扫码即可实时追踪<br/> {/* SCAN QR CODE TO TRACK -> 扫码即可实时追踪 */}
+                                    {apiSettings.siteName} 专属服务 {/* SERVICE -> 专属服务 */}
                                 </div>
                             </div>
 
@@ -1645,7 +1659,7 @@ export default function App() {
                            
                            let apiLatestItem = null;
                            if (apiCache && Array.isArray(apiCache.data)) { if (apiCache.data.length > 0) { const validData = apiCache.data.filter(item => item && (item.time || item.ftime)); const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); if (sortedData.length > 0) { apiLatestItem = sortedData[0]; } } }
-                           const rawStatusText = apiLatestItem ? (apiLatestItem.status || apiLatestItem.context || apiLatestItem.desc) : (dbOrder.lastApiStatus || '待揽收');
+                           const rawStatusText = apiLatestItem ? (apiLatestItem.status || apiLatestItem.context || apiLatestItem.desc) : (dbOrder.lastApiStatus || '暂无轨迹'); // 使用 '暂无轨迹' 作为默认值，确保 getSimplifiedStatus 捕获
                            const statusKey = getSimplifiedStatus(rawStatusText);
                            const statusStyle = STATUS_STYLES[statusKey] || STATUS_STYLES['中转中'];
                            const StatusIllustration = statusStyle.illustration;
