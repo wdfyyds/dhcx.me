@@ -841,7 +841,7 @@ export default function App() {
         reader.readAsDataURL(file);
     };
 
-    const handleImportFileChange = async (e) => { const file = e.target.files[0]; if (!file) return; if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) { showToast("正在加载 Excel 解析引擎...", "success"); try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX'); const reader = new FileReader(); reader.onload = (event) => { const data = new Uint8Array(event.target.result); const workbook = window.XLSX.read(data, { type: 'array', cellDates: true }); const text = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]], { FS: " " }); setImportText(text); showToast(`Excel 解析成功！${text.split('\n').length} 行`, "success"); }; reader.readAsArrayBuffer(file); } catch (err) { showScript("解析引擎加载失败", "error"); } return; } const reader = new FileReader(); reader.onload = (event) => { setImportText(event.target.result); showToast("文件读取成功", "success"); }; reader.readAsText(file); };
+    const handleImportFileChange = async (e) => { const file = e.target.files[0]; if (!file) return; if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) { showToast("正在加载 Excel 解析引擎...", "success"); try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX'); const reader = new FileReader(); reader.onload = (event) => { const data = new Uint8Array(event.target.result); const workbook = window.XLSX.read(data, { type: 'array', cellDates: true }); const text = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]], { FS: " " }); setImportText(text); showToast(`Excel 解析成功！${text.split('\n').length} 行`, "success"); }; reader.readAsArrayBuffer(file); } catch (err) { showToast("解析引擎加载失败", "error"); } return; } const reader = new FileReader(); reader.onload = (event) => { setImportText(event.target.result); showToast("文件读取成功", "success"); }; reader.readAsText(file); };
     
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
@@ -1113,7 +1113,7 @@ export default function App() {
         });
     };
 
-    // [修改] 卡片截图复制功能 - 移除下载降级
+    // [修改] 卡片截图复制功能 - 移除自动下载降级，仅提示手动保存
     const handleCopyCardImage = async () => {
         if (!cardRef.current || isCopyingCard) return;
         setIsCopyingCard(true);
@@ -1148,7 +1148,7 @@ export default function App() {
                 }
                 
                 try {
-                    // Check logic...
+                    // 尝试写入剪贴板
                     if (typeof navigator.clipboard === 'undefined' || typeof navigator.clipboard.write === 'undefined') {
                         throw new Error("Clipboard API not available");
                     }
@@ -1159,11 +1159,10 @@ export default function App() {
                     showToast("卡片已复制到剪贴板！", "success");
                     if (navigator.vibrate) navigator.vibrate(200);
                 } catch (err) {
-                    console.warn("Clipboard write failed, falling back to manual save prompt:", err);
+                    // [修改] 降级逻辑：只提示用户手动保存/长按
+                    console.warn("Clipboard write failed, instructing manual save:", err);
+                    showToast("复制失败，请长按或右键卡片进行保存/分享", "error");
                     
-                    // --- 移除自动下载降级方案，改为提示用户手动保存 ---
-                    showToast("复制受限，请长按或右键卡片手动保存图片", "error");
-                    // --- 降级处理结束 ---
                 } finally {
                     setIsCopyingCard(false);
                 }
@@ -1572,7 +1571,7 @@ export default function App() {
                                 </div>
                             </div>
 
-                            {/* 底部操作条 (PC端隐藏，移动端保留复制按钮作为 fallback) */}
+                            {/* [优化] 底部操作条：PC端隐藏，移动端保留复制按钮作为 fallback */}
                             <div className="absolute bottom-4 right-4 z-20 md:hidden">
                                 <button onClick={handleCopyCardImage} disabled={isCopyingCard} className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
                                     {isCopyingCard ? <RefreshCw size={16} className="animate-spin"/> : <Copy size={16}/>}
