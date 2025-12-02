@@ -996,47 +996,82 @@ export default function App() {
     };
     
     // --- [新增] 异步生成短链并复制 ---
-    const handleQuickCopyReply = async (order) => { 
-        showToast("正在生成短链并复制...", "success"); // 提示用户
-        let realTimeStatus = order.lastApiStatus; 
-        const cache = logisticsDataCache[order.id]; 
-        if (cache && cache.data && Array.isArray(cache.data) && cache.data.length > 0) { 
-            const validData = cache.data.filter(item => item && (item.time || item.ftime)); 
-            const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); 
-            if (sortedData.length > 0) { realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; } 
-        } 
-        const statusSimple = getSimplifiedStatus(realTimeStatus); 
-        
-        // --- 核心修改：强制使用单号生成短链 ---
-        // 无论是否有手机号，都使用运单号作为查询参数
-        let queryValue = order.trackingNumber.trim();
+    const handleQuickCopyReply = (order) => { 
+        showToast("正在生成短链并复制...", "success");
 
-        let queryLink;
-        try {
-            // 尝试获取数据库短链
-            const shortCode = await DataService.getOrCreateShortLink(queryValue);
+        // 定义生成文本的异步逻辑
+        const generateMessage = async () => {
+            let realTimeStatus = order.lastApiStatus; 
+            const cache = logisticsDataCache[order.id]; 
+            if (cache && cache.data && Array.isArray(cache.data) && cache.data.length > 0) { 
+                const validData = cache.data.filter(item => item && (item.time || item.ftime)); 
+                const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); 
+                if (sortedData.length > 0) { realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; } 
+            } 
+            const statusSimple = getSimplifiedStatus(realTimeStatus); 
             
-            // [修改] 链接格式改为 dhcx.me/xxxxx 
-            // 重要：为了不报 404，服务器必须将所有未找到的路径重定向到 index.html (SPA Fallback)
-            queryLink = `dhcx.me/${shortCode}`; 
-        } catch (e) {
-            // 降级方案
-            console.warn("短链生成失败，自动降级为长链接:", e.message);
-            const safeToken = encodeToken(queryValue);
-            queryLink = `dhcx.me?q=${safeToken}`; 
+            let queryValue = order.trackingNumber.trim();
+            let queryLink;
+            try {
+                // 尝试获取数据库短链
+                const shortCode = await DataService.getOrCreateShortLink(queryValue);
+                // 格式：dhcx.me/xxxxx (无 https://)
+                queryLink = `dhcx.me/${shortCode}`; 
+            } catch (e) {
+                console.warn("短链生成失败:", e.message);
+                const safeToken = encodeToken(queryValue);
+                queryLink = `dhcx.me?q=${safeToken}`; 
+            }
+
+            let templateKey = 'TRANSPORT'; 
+            if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; 
+            else if (statusSimple === '派件中') templateKey = 'DELIVERING'; 
+            else if (statusSimple === '已签收') templateKey = 'SIGN'; 
+            else if (statusSimple === '异常件') templateKey = 'ABNORMAL'; 
+            
+            let message = DEFAULT_TEMPLATES[templateKey]; 
+            message = message.replace(/{name}/g, order.recipientName || '客户')
+                             .replace(/{product}/g, order.product || '商品')
+                             .replace(/{courier}/g, order.courier)
+                             .replace(/{no}/g, order.trackingNumber)
+                             .replace(/{link}/g, queryLink)
+                             .replace(/{status}/g, realTimeStatus || statusSimple);
+            return message;
+        };
+
+        // 尝试使用 ClipboardItem + Promise (iOS Safari 13.1+, Chrome 98+ 支持)
+        // 这种方式可以保持"用户意图"直到Promise解决，从而绕过异步复制限制
+        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
+            try {
+                // 创建一个 Promise，该 Promise 解析为 Blob
+                const textPromise = generateMessage().then(text => new Blob([text], { type: 'text/plain' }));
+                
+                // 将 Promise 传递给 ClipboardItem
+                const clipboardItem = new ClipboardItem({ 'text/plain': textPromise });
+                
+                navigator.clipboard.write([clipboardItem]).then(() => {
+                    showToast("复制成功");
+                    if (navigator.vibrate) navigator.vibrate(200);
+                }).catch((err) => {
+                    console.warn("ClipboardItem 写入失败，尝试降级:", err);
+                    // 降级：等待结果后尝试普通写入 (可能被拦截，但值得一试)
+                    generateMessage().then(text => copyToClipboard(text));
+                });
+                return; // 如果支持 ClipboardItem，直接返回，不再执行下面的降级
+            } catch (e) {
+                console.warn("ClipboardItem 构造失败:", e);
+                // 继续执行下方的降级逻辑
+            }
         }
 
-        let templateKey = 'TRANSPORT'; 
-        if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; 
-        else if (statusSimple === '派件中') templateKey = 'DELIVERING'; 
-        else if (statusSimple === '已签收') templateKey = 'SIGN'; 
-        else if (statusSimple === '异常件') templateKey = 'ABNORMAL'; 
-        let message = DEFAULT_TEMPLATES[templateKey]; 
-        message = message.replace(/{name}/g, order.recipientName || '客户').replace(/{product}/g, order.product || '商品').replace(/{courier}/g, order.courier).replace(/{no}/g, order.trackingNumber).replace(/{link}/g, queryLink).replace(/{status}/g, realTimeStatus || statusSimple); 
-        
-        // 调用增强版复制函数
-        await copyToClipboard(message);
-        if (navigator.vibrate) navigator.vibrate(200);
+        // 降级逻辑：旧版浏览器或不支持 Promise 的 ClipboardItem
+        generateMessage().then(text => {
+            copyToClipboard(text);
+            if (navigator.vibrate) navigator.vibrate(200);
+        }).catch(err => {
+            console.error("生成消息失败:", err);
+            showToast("生成失败", "error");
+        });
     };
     const handleShowLogistics = (order) => { setViewingLogisticsOrder(order); fetchLogistics(order); };
     
