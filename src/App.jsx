@@ -874,7 +874,7 @@ export default function App() {
     const toggleSelection = (id) => { const newSet = new Set(selectedOrders); newSet.has(id) ? newSet.delete(id) : newSet.add(id); setSelectedOrders(newSet); };
     const toggleSelectAll = () => { const newSet = new Set(); if (selectedOrders.size !== orders.length) orders.forEach(o => newSet.add(o.id)); setSelectedOrders(newSet); };
     
-    // --- [修复] 强化版复制功能 (兼容手机端异步复制 + 弹窗降级) ---
+    // --- [修复] 强化版复制功能 (去除弹窗，仅保留静默复制尝试) ---
     const copyToClipboard = async (text) => {
         // 1. 尝试使用 Clipboard API (现代浏览器/HTTPS)
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -883,7 +883,7 @@ export default function App() {
                 showToast("复制成功");
                 return;
             } catch (err) {
-                console.warn("Clipboard API 失败, 尝试降级方案:", err);
+                console.warn("Clipboard API 失败:", err);
             }
         }
         
@@ -892,21 +892,17 @@ export default function App() {
             const textArea = document.createElement("textarea");
             textArea.value = text;
             
-            // 关键：iOS 需要 contentEditable 和 readOnly=false 才能 programmatically select
+            // 关键属性设置，防止页面跳动和缩放
             textArea.contentEditable = "true";
             textArea.readOnly = false;
-            
-            // 样式：不可见但存在
             textArea.style.position = "fixed";
             textArea.style.left = "-9999px";
             textArea.style.top = "0";
             textArea.style.opacity = "0";
-            // 防止 iOS 缩放
-            textArea.style.fontSize = "16px"; 
+            textArea.style.fontSize = "16px"; // 防止 iOS 缩放
 
             document.body.appendChild(textArea);
             
-            // 选中
             textArea.focus();
             textArea.select();
             
@@ -916,25 +912,20 @@ export default function App() {
             const selection = window.getSelection();
             selection.removeAllRanges();
             selection.addRange(range);
-            textArea.setSelectionRange(0, 999999); // For mobile devices
+            textArea.setSelectionRange(0, 999999);
 
             const successful = document.execCommand('copy');
             document.body.removeChild(textArea);
             
             if (successful) {
                 showToast("复制成功");
-                return;
+            } else {
+                // 仅提示错误，不再弹窗
+                showToast("复制受限，请长按话术手动复制", "error");
             }
         } catch (err) {
-            console.error("后台复制失败:", err);
-        }
-
-        // 3. 终极降级方案：如果是异步操作导致 execCommand 失效，直接弹出 prompt 让用户复制
-        // 这虽然不优雅，但保证用户能拿到内容，不会“失效”
-        try {
-            window.prompt("请全选复制以下内容:", text);
-        } catch (e) {
-            showToast("复制失败，请尝试手动复制", "error");
+            console.error("复制失败:", err);
+            showToast("复制受限，请长按话术手动复制", "error");
         }
     };
     
