@@ -1101,7 +1101,7 @@ export default function App() {
         });
     };
 
-    // --- [修改] 本地生成二维码版本 ---
+    // --- [修改] 使用在线 API 生成二维码 (修复加载失败问题) ---
     const handleShowQrCode = async (order) => {
         // [新增] 构造卡片信息
         const info = {
@@ -1127,29 +1127,27 @@ export default function App() {
             const host = typeof window !== 'undefined' ? window.location.host : 'dhcx.me';
             const displayText = `${host}/${shortCode}`;
 
-            // 4. [核心修改] 加载本地二维码库并生成 Base64 图片
-            // 使用您代码里已有的 loadScript 工具函数
-            if (!window.QRCode) {
-                await loadScript('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js', 'QRCode');
-            }
-
-            // 调用本地库生成 Data URL (Base64图片)
-            const base64Image = await window.QRCode.toDataURL(jumpUrl, {
-                width: 200,
-                margin: 2,
-                color: {
-                    dark: '#000000',
-                    light: '#ffffff'
-                }
-            });
+            // 4. [修改] 对接免费 API 生成二维码 (替代不稳定的本地库)
+            // 使用 api.qrserver.com 服务
+            const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(jumpUrl)}&bgcolor=ffffff&color=000000&margin=10`;
             
-            setQrCodeModal({ 
-                show: true, 
-                url: base64Image, // 这里放入的是本地生成的 base64 字符串
-                title: displayText, 
-                info, // [新增] 传递信息对象
-                loading: false 
-            });
+            // 图片预加载，确保显示时已有图片
+            const img = new Image();
+            img.onload = () => {
+                setQrCodeModal({ 
+                    show: true, 
+                    url: apiUrl, 
+                    title: displayText, 
+                    info, 
+                    loading: false 
+                });
+            };
+            img.onerror = () => {
+                 // Fallback if API fails (rare, but good practice)
+                 setQrCodeModal({ show: false, url: '', title: '', loading: false });
+                 showToast("二维码生成服务繁忙", "error");
+            };
+            img.src = apiUrl;
 
         } catch (e) {
             console.error("二维码生成失败", e);
