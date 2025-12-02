@@ -1132,15 +1132,34 @@ export default function App() {
                 
                 try {
                     // 尝试写入剪贴板 (需 HTTPS 或 Localhost)
+                    // Check if permission is denied explicitly first (optional, but try-catch handles it)
+                    if (typeof navigator.clipboard === 'undefined' || typeof navigator.clipboard.write === 'undefined') {
+                        throw new Error("Clipboard API not available");
+                    }
+                    
                     await navigator.clipboard.write([
                         new ClipboardItem({ 'image/png': blob })
                     ]);
                     showToast("卡片已复制到剪贴板！", "success");
                     if (navigator.vibrate) navigator.vibrate(200);
                 } catch (err) {
-                    console.error("Clipboard write failed:", err);
-                    // 降级：提示用户手动保存或仅下载
-                    showToast("自动复制受限，请长按保存", "error");
+                    console.warn("Clipboard write failed (policy or permission), falling back to download:", err);
+                    
+                    // --- 降级方案: 下载图片 ---
+                    try {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `DHCX_Tracking_${Date.now()}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        showToast("复制受限，已为您自动下载图片", "success");
+                    } catch (dlErr) {
+                        console.error("Download fallback failed:", dlErr);
+                        showToast("自动保存失败，请长按图片保存", "error");
+                    }
                 } finally {
                     setIsCopyingCard(false);
                 }
@@ -1495,26 +1514,26 @@ export default function App() {
                             {/* 主要内容区 */}
                             <div className="p-6 pb-4 relative z-10">
                                 <div className="flex items-center gap-2 mb-4 opacity-80">
-                                    <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">GO</div>
+                                    <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">前往</div> {/* GO -> 前往 */}
                                     <div className="text-xs font-bold text-black tracking-widest uppercase">{apiSettings.siteName}</div>
                                 </div>
                                 
-                                <h3 className="text-2xl font-black text-black leading-none mb-1">LOGISTICS</h3>
-                                <div className="text-xs font-mono text-black/40 uppercase tracking-[0.2em] mb-6">TRACKING TICKET</div>
+                                <h3 className="text-2xl font-black text-black leading-none mb-1">物流追踪</h3> {/* LOGISTICS -> 物流追踪 */}
+                                <div className="text-xs font-mono text-black/40 uppercase tracking-[0.2em] mb-6">专属查询票据</div> {/* TRACKING TICKET -> 专属查询票据 */}
 
                                 {/* 信息网格 */}
                                 {qrCodeModal.info ? (
                                     <div className="grid grid-cols-2 gap-y-4 gap-x-2 mb-6">
                                         <div>
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">RECIPIENT</div>
+                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">收件人</div> {/* RECIPIENT -> 收件人 */}
                                             <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.name}</div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">PRODUCT</div>
+                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">商品详情</div> {/* PRODUCT -> 商品详情 */}
                                             <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.product}</div>
                                         </div>
                                         <div className="col-span-2 pt-3 border-t border-dashed border-black/10">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">TRACKING NO.</div>
+                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码</div> {/* TRACKING NO. -> 运单号码 */}
                                             <div className="font-mono text-lg font-black text-black tracking-wider break-all leading-tight">{qrCodeModal.info.trackingNumber}</div>
                                         </div>
                                     </div>
@@ -1546,8 +1565,8 @@ export default function App() {
                                     )}
                                 </div>
                                 <div className="text-[10px] font-mono text-black/30 text-center leading-relaxed">
-                                    SCAN QR CODE TO TRACK<br/>
-                                    {apiSettings.siteName} SERVICE
+                                    扫码即可实时追踪<br/> {/* SCAN QR CODE TO TRACK */}
+                                    {apiSettings.siteName} 专属服务 {/* SERVICE */}
                                 </div>
                             </div>
 
@@ -1561,7 +1580,7 @@ export default function App() {
 
                          {/* PC 端底部提示 */}
                          <div className="absolute bottom-10 text-white/50 text-xs font-mono hidden md:block">
-                            {isCopyingCard ? "Generating Image..." : "Image auto-copied to clipboard"}
+                            {isCopyingCard ? "正在生成卡片..." : "卡片已自动复制到剪贴板"} {/* English -> Chinese */}
                          </div>
                     </div>
                 )}
@@ -1691,25 +1710,25 @@ export default function App() {
 
                             <div className="p-6 pb-4 relative z-10">
                                 <div className="flex items-center gap-2 mb-4 opacity-80">
-                                    <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">GO</div>
+                                    <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">前往</div> {/* GO -> 前往 */}
                                     <div className="text-xs font-bold text-black tracking-widest uppercase">{apiSettings.siteName}</div>
                                 </div>
                                 
-                                <h3 className="text-2xl font-black text-black leading-none mb-1">LOGISTICS</h3>
-                                <div className="text-xs font-mono text-black/40 uppercase tracking-[0.2em] mb-6">TRACKING TICKET</div>
+                                <h3 className="text-2xl font-black text-black leading-none mb-1">物流追踪</h3> {/* LOGISTICS -> 物流追踪 */}
+                                <div className="text-xs font-mono text-black/40 uppercase tracking-[0.2em] mb-6">专属查询票据</div> {/* TRACKING TICKET -> 专属查询票据 */}
 
                                 {qrCodeModal.info ? (
                                     <div className="grid grid-cols-2 gap-y-4 gap-x-2 mb-6">
                                         <div>
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">RECIPIENT</div>
+                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">收件人</div> {/* RECIPIENT -> 收件人 */}
                                             <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.name}</div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">PRODUCT</div>
+                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">商品详情</div> {/* PRODUCT -> 商品详情 */}
                                             <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.product}</div>
                                         </div>
                                         <div className="col-span-2 pt-3 border-t border-dashed border-black/10">
-                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">TRACKING NO.</div>
+                                            <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码</div> {/* TRACKING NO. -> 运单号码 */}
                                             <div className="font-mono text-lg font-black text-black tracking-wider break-all leading-tight">{qrCodeModal.info.trackingNumber}</div>
                                         </div>
                                     </div>
@@ -1738,8 +1757,8 @@ export default function App() {
                                     )}
                                 </div>
                                 <div className="text-[10px] font-mono text-black/30 text-center leading-relaxed">
-                                    SCAN QR CODE TO TRACK<br/>
-                                    {apiSettings.siteName} SERVICE
+                                    扫码即可实时追踪<br/> {/* SCAN QR CODE TO TRACK -> 扫码即可实时追踪 */}
+                                    {apiSettings.siteName} 专属服务 {/* SERVICE -> 专属服务 */}
                                 </div>
                             </div>
 
@@ -1749,6 +1768,11 @@ export default function App() {
                                 </button>
                             </div>
                         </div>
+
+                         {/* PC 端底部提示 */}
+                         <div className="absolute bottom-10 text-white/50 text-xs font-mono hidden md:block">
+                            {isCopyingCard ? "正在生成卡片..." : "卡片已自动复制到剪贴板"} {/* English -> Chinese */}
+                         </div>
                     </div>
             )}
         </div>
