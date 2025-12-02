@@ -285,9 +285,15 @@ const DataService = {
                 } catch (e) { 
                     detailMsg = error.message || "未知网络错误";
                 }
+                
+                // --- [新增] 针对常见错误代码的优化提示 ---
                 if (detailMsg.includes("400") || detailMsg.includes("Bad Request")) {
                     detailMsg = "快递单号不存在或格式有误";
+                } else if (detailMsg.includes("403") || detailMsg.includes("Forbidden")) {
+                    // [优化] 403 明确提示额度或过期
+                    detailMsg = "查询接口额度不足或已过期 (403)";
                 }
+                
                 console.error("Edge Function 报错:", detailMsg);
                 throw new Error(detailMsg);
             }
@@ -997,10 +1003,11 @@ export default function App() {
     
     // --- [新增] 异步生成短链并复制 ---
     const handleQuickCopyReply = (order) => { 
+        // 1. 立即给用户反馈
         showToast("正在生成短链并复制...", "success");
 
-        // 定义生成文本的异步逻辑
-        const generateMessage = async () => {
+        // 2. 定义生成文案的异步任务
+        const createMessageTask = async () => {
             let realTimeStatus = order.lastApiStatus; 
             const cache = logisticsDataCache[order.id]; 
             if (cache && cache.data && Array.isArray(cache.data) && cache.data.length > 0) { 
@@ -1015,7 +1022,7 @@ export default function App() {
             try {
                 // 尝试获取数据库短链
                 const shortCode = await DataService.getOrCreateShortLink(queryValue);
-                // 格式：dhcx.me/xxxxx (无 https://)
+                // [修改] 链接格式 dhcx.me/xxxxx (无协议头，无 #)
                 queryLink = `dhcx.me/${shortCode}`; 
             } catch (e) {
                 console.warn("短链生成失败:", e.message);
@@ -1039,38 +1046,36 @@ export default function App() {
             return message;
         };
 
-        // 尝试使用 ClipboardItem + Promise (iOS Safari 13.1+, Chrome 98+ 支持)
-        // 这种方式可以保持"用户意图"直到Promise解决，从而绕过异步复制限制
+        // 3. 使用 ClipboardItem + Promise 解决移动端异步复制被拦截的问题
         if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
             try {
-                // 创建一个 Promise，该 Promise 解析为 Blob
-                const textPromise = generateMessage().then(text => new Blob([text], { type: 'text/plain' }));
+                // 构造一个延迟解析的 ClipboardItem
+                // 浏览器允许在点击事件中创建一个 Promise 类型的剪贴板项
+                const textBlobPromise = createMessageTask().then(text => new Blob([text], { type: 'text/plain' }));
+                const item = new ClipboardItem({ 'text/plain': textBlobPromise });
                 
-                // 将 Promise 传递给 ClipboardItem
-                const clipboardItem = new ClipboardItem({ 'text/plain': textPromise });
-                
-                navigator.clipboard.write([clipboardItem]).then(() => {
+                navigator.clipboard.write([item]).then(() => {
                     showToast("复制成功");
                     if (navigator.vibrate) navigator.vibrate(200);
-                }).catch((err) => {
-                    console.warn("ClipboardItem 写入失败，尝试降级:", err);
-                    // 降级：等待结果后尝试普通写入 (可能被拦截，但值得一试)
-                    generateMessage().then(text => copyToClipboard(text));
+                }).catch(err => {
+                    console.warn("ClipboardItem 写入被拦截，尝试降级:", err);
+                    // 如果高级 API 失败，尝试降级方案
+                    createMessageTask().then(text => copyToClipboard(text));
                 });
-                return; // 如果支持 ClipboardItem，直接返回，不再执行下面的降级
+                return; 
             } catch (e) {
-                console.warn("ClipboardItem 构造失败:", e);
-                // 继续执行下方的降级逻辑
+                console.warn("ClipboardItem 初始化失败:", e);
             }
         }
 
-        // 降级逻辑：旧版浏览器或不支持 Promise 的 ClipboardItem
-        generateMessage().then(text => {
+        // 4. 降级方案：适用于旧浏览器或不支持 ClipboardItem 的环境
+        // 注意：这种方式在 iOS 上如果 createMessageTask 耗时过长可能会失败
+        createMessageTask().then(text => {
             copyToClipboard(text);
             if (navigator.vibrate) navigator.vibrate(200);
         }).catch(err => {
-            console.error("生成消息失败:", err);
-            showToast("生成失败", "error");
+            console.error("生成失败:", err);
+            showToast("生成失败，请重试", "error");
         });
     };
     const handleShowLogistics = (order) => { setViewingLogisticsOrder(order); fetchLogistics(order); };
