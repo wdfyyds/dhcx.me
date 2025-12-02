@@ -841,7 +841,7 @@ export default function App() {
         reader.readAsDataURL(file);
     };
 
-    const handleImportFileChange = async (e) => { const file = e.target.files[0]; if (!file) return; if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) { showToast("正在加载 Excel 解析引擎...", "success"); try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX'); const reader = new FileReader(); reader.onload = (event) => { const data = new Uint8Array(event.target.result); const workbook = window.XLSX.read(data, { type: 'array', cellDates: true }); const text = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]], { FS: " " }); setImportText(text); showToast(`Excel 解析成功！${text.split('\n').length} 行`, "success"); }; reader.readAsArrayBuffer(file); } catch (err) { showToast("解析引擎加载失败", "error"); } return; } const reader = new FileReader(); reader.onload = (event) => { setImportText(event.target.result); showToast("文件读取成功", "success"); }; reader.readAsText(file); };
+    const handleImportFileChange = async (e) => { const file = e.target.files[0]; if (!file) return; if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) { showToast("正在加载 Excel 解析引擎...", "success"); try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX'); const reader = new FileReader(); reader.onload = (event) => { const data = new Uint8Array(event.target.result); const workbook = window.XLSX.read(data, { type: 'array', cellDates: true }); const text = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]], { FS: " " }); setImportText(text); showToast(`Excel 解析成功！${text.split('\n').length} 行`, "success"); }; reader.readAsArrayBuffer(file); } catch (err) { showScript("解析引擎加载失败", "error"); } return; } const reader = new FileReader(); reader.onload = (event) => { setImportText(event.target.result); showToast("文件读取成功", "success"); }; reader.readAsText(file); };
     
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
@@ -1026,7 +1026,7 @@ export default function App() {
             if (isSuccess) { 
                 let rawList = result.data || result.list || result.traces || result.Traces || result.logisticsTraceDetailList || [];
                 if (!Array.isArray(rawList) && typeof rawList === 'object') { rawList = rawList.list || rawList.traces || rawList.Traces || []; }
-                if (!ArrayisArray(rawList) || rawList.length === 0) { rawList = [{ time: Date.now(), status: "暂无详细轨迹，请稍后再试" }]; }
+                if (!Array.isArray(rawList) || rawList.length === 0) { rawList = [{ time: Date.now(), status: "暂无详细轨迹，请稍后再试" }]; }
                 const list = rawList.map(item => ({ time: item.time || item.ftime || item.AcceptTime || item.time_stamp || Date.now(), status: item.status || item.context || item.desc || item.AcceptStation || "未知状态" }));
                 setLogisticsDataCache(prev => ({ ...prev, [order.id]: { loading: false, data: list, error: null } }));
             } else { 
@@ -1113,7 +1113,7 @@ export default function App() {
         });
     };
 
-    // [修改] 卡片截图复制功能 - 增加字体等待
+    // [修改] 卡片截图复制功能 - 移除下载降级
     const handleCopyCardImage = async () => {
         if (!cardRef.current || isCopyingCard) return;
         setIsCopyingCard(true);
@@ -1159,24 +1159,11 @@ export default function App() {
                     showToast("卡片已复制到剪贴板！", "success");
                     if (navigator.vibrate) navigator.vibrate(200);
                 } catch (err) {
-                    console.warn("Clipboard write failed, falling back to download:", err);
+                    console.warn("Clipboard write failed, falling back to manual save prompt:", err);
                     
-                    // --- 降级方案: 下载图片 ---
-                    try {
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        // 文件名加上时间戳
-                        a.download = `DHCX_Tracking_${Date.now()}.png`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                        showToast("复制受限，已为您自动下载图片", "success");
-                    } catch (dlErr) {
-                        console.error("Download fallback failed:", dlErr);
-                        showToast("自动保存失败，请长按图片保存", "error");
-                    }
+                    // --- 移除自动下载降级方案，改为提示用户手动保存 ---
+                    showToast("复制受限，请长按或右键卡片手动保存图片", "error");
+                    // --- 降级处理结束 ---
                 } finally {
                     setIsCopyingCard(false);
                 }
