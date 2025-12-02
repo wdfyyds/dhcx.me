@@ -1135,8 +1135,25 @@ export default function App() {
                 useCORS: true, 
                 scale: 3, // [优化] 提高截图分辨率至 3x，解决图片不够高清的问题
                 logging: false,
-                // [修复] 尝试修正文字渲染位置偏移（部分浏览器有效）
-                letterRendering: true, 
+                // [关键修复] 删除 letterRendering: true 以修复中文字符错位问题
+                // letterRendering: true, 
+
+                // [新增] 修正滚动条导致的偏移
+                scrollY: 0,
+                scrollX: 0,
+
+                // [新增] 截图瞬间移除可能干扰的动画
+                onclone: (clonedDoc) => {
+                    const clonedCard = clonedDoc.querySelector('[class*="w-full max-w-[320px]"]');
+                    if (clonedCard) {
+                        const elements = clonedCard.querySelectorAll('*');
+                        elements.forEach(el => {
+                            el.style.transform = 'none';
+                            el.style.animation = 'none';
+                            el.style.transition = 'none';
+                        });
+                    }
+                }
             });
 
             // 3. 转 Blob 并写入剪贴板
@@ -1527,11 +1544,13 @@ export default function App() {
                                     <div className="grid grid-cols-2 gap-y-4 gap-x-2 mb-6">
                                         <div>
                                             <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">收件人</div> {/* RECIPIENT -> 收件人 */}
-                                            <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.name}</div>
+                                            {/* [优化] 添加 leading-tight 确保截图行高稳定 */}
+                                            <div className="text-sm font-bold text-black truncate leading-tight">{qrCodeModal.info.name}</div>
                                         </div>
                                         <div className="text-right">
                                             <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">商品详情</div> {/* PRODUCT -> 商品详情 */}
-                                            <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.product}</div>
+                                            {/* [优化] 添加 leading-tight */}
+                                            <div className="text-sm font-bold text-black truncate leading-tight">{qrCodeModal.info.product}</div>
                                         </div>
                                         <div className="col-span-2 pt-3 border-t border-dashed border-black/10">
                                             <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码 ({qrCodeModal.info.courier})</div> {/* [优化] 添加快递公司名称 */}
@@ -1722,11 +1741,13 @@ export default function App() {
                                     <div className="grid grid-cols-2 gap-y-4 gap-x-2 mb-6">
                                         <div>
                                             <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">收件人</div> {/* RECIPIENT -> 收件人 */}
-                                            <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.name}</div>
+                                            {/* [优化] 添加 leading-tight */}
+                                            <div className="text-sm font-bold text-black truncate leading-tight">{qrCodeModal.info.name}</div>
                                         </div>
                                         <div className="text-right">
                                             <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">商品详情</div> {/* PRODUCT -> 商品详情 */}
-                                            <div className="text-sm font-bold text-black truncate">{qrCodeModal.info.product}</div>
+                                            {/* [优化] 添加 leading-tight */}
+                                            <div className="text-sm font-bold text-black truncate leading-tight">{qrCodeModal.info.product}</div>
                                         </div>
                                         <div className="col-span-2 pt-3 border-t border-dashed border-black/10">
                                             <div className="text-[9px] font-bold text-black/30 uppercase tracking-wider mb-0.5">运单号码 ({qrCodeModal.info.courier})</div> {/* [优化] 添加快递公司名称 */}
