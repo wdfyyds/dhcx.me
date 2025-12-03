@@ -1504,14 +1504,14 @@ export default function App() {
                                 <div className="flex justify-between items-start mb-8">
                                     <div>
                                         <h1 className="text-3xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-                                            DHCX<span style={{ color: apiSettings.themeColor }}>.</span>
+                                            DHCX<span style={{ color: apiSettings.themeColor }}>.ME</span>
                                         </h1>
                                         <p className="text-[9px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
                                     </div>
                                     
                                     <div className="bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
-                                        <span className="text-[10px] font-bold tracking-wider">前往官网</span>
-                                        <ArrowRight size={10} className="opacity-70" />
+                                        <ShieldCheck size={10} className="opacity-70" />
+                                        <span className="text-[10px] font-bold tracking-wider">官方查询通道</span>
                                     </div>
                                 </div>
                                 
@@ -1718,14 +1718,14 @@ export default function App() {
                                 <div className="flex justify-between items-start mb-8">
                                     <div>
                                         <h1 className="text-3xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-                                            DHCX<span style={{ color: apiSettings.themeColor }}>.</span>
+                                            DHCX<span style={{ color: apiSettings.themeColor }}>.ME</span>
                                         </h1>
                                         <p className="text-[9px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
                                     </div>
                                     
                                     <div className="bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
-                                        <span className="text-[10px] font-bold tracking-wider">前往官网</span>
-                                        <ArrowRight size={10} className="opacity-70" />
+                                        <ShieldCheck size={10} className="opacity-70" />
+                                        <span className="text-[10px] font-bold tracking-wider">官方查询通道</span>
                                     </div>
                                 </div>
                                 
