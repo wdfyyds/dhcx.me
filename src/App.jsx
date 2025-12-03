@@ -265,19 +265,39 @@ const DataService = {
         return { data: data || [], total: count || 0 };
     },
     
+    // --- [修改] searchPublic: 隐私保护增强版 ---
     searchPublic: async (queryText) => {
         if (!supabase) throw new Error("系统初始化中，请刷新页面重试"); 
         if (!queryText) return [];
         const cleanQuery = queryText.trim().replace(/\s+/g, '');
-        let conditions = `trackingNumber.eq.${cleanQuery},phone.eq.${cleanQuery},recipientName.eq.${cleanQuery}`;
-        if (/^\d{4,}$/.test(cleanQuery)) {
-            conditions += `,phone.like.%${cleanQuery}`;
+
+        // 隐私策略 V2:
+        // 1. 禁止姓名查询 (重名风险)
+        // 2. 禁止手机号模糊查询 (防猜测)
+        // 3. 只允许: 运单号 (精确) OR 完整手机号 (11位精确)
+
+        // 判断是否为有效的 11 位手机号
+        const isPhoneNumber = /^\d{11}$/.test(cleanQuery);
+        
+        // 构造查询条件
+        let orConditions = [];
+
+        // 始终允许查运单号 (精确匹配)
+        orConditions.push(`trackingNumber.eq.${cleanQuery}`);
+
+        // 只有当输入确认为11位数字时，才允许查手机号 (精确匹配)
+        if (isPhoneNumber) {
+            orConditions.push(`phone.eq.${cleanQuery}`);
         }
+
+        // 注意：这里我们移除了 `recipientName.eq` 和 `phone.like`
+        
         const { data, error } = await supabase
             .from('orders')
             .select('*')
-            .or(conditions)
+            .or(orConditions.join(','))
             .order('timestamp', { ascending: false });
+            
         if (error) throw error;
         return data || [];
     },
@@ -1894,7 +1914,7 @@ export default function App() {
                 <div className="absolute top-6 w-full flex justify-start px-6"> <span className="text-[10px] font-mono tracking-[0.2em] text-white/20 select-none cursor-default">{apiSettings.siteName}</span> </div>
                 <div className="relative group mb-6 mt-4"> <div className="absolute inset-0 rounded-full blur-md opacity-50" style={{ backgroundColor: apiSettings.themeColor }}></div> <button onClick={handleSecretEntry} className="w-24 h-24 rounded-full overflow-hidden border-2 relative z-10 bg-black active:scale-95 transition-transform duration-100" style={{ borderColor: apiSettings.themeColor, cursor: 'default' }} title="" > {apiSettings.logoUrl ? <img key={apiSettings.logoUrl} src={apiSettings.logoUrl} className="w-full h-full object-cover" onError={(e) => {e.target.onerror = null; e.target.style.display = 'none'; e.target.parentNode.classList.add('fallback-active');}} /> : <div className="w-full h-full flex items-center justify-center text-white font-black text-2xl italic">DHCX</div>} </button> </div>
                 <h1 className="text-3xl font-black text-white mb-2 tracking-tighter italic uppercase text-center" style={{ textShadow: `0 0 20px ${apiSettings.themeColor}80` }}>{apiSettings.siteTitle}</h1>
-                <TiltCard className="w-full relative z-20 group mt-8"><div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-1.5 flex gap-2 shadow-2xl"><form onSubmit={handleSearch} className="flex-1"><input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="请输入姓名/手机号（含后四位）/单号" className="w-full h-12 pl-4 pr-4 bg-transparent text-white placeholder-white/30 font-mono text-sm outline-none" inputMode="text"/></form><button onClick={handleSearch} className="h-12 px-6 rounded-lg font-bold text-black hover:brightness-110 active:scale-95 transition-all" style={{ backgroundColor: apiSettings.themeColor }}>查询</button></div></TiltCard>
+                <TiltCard className="w-full relative z-20 group mt-8"><div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-1.5 flex gap-2 shadow-2xl"><form onSubmit={handleSearch} className="flex-1"><input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="请输入完整手机号或运单号" className="w-full h-12 pl-4 pr-4 bg-transparent text-white placeholder-white/30 font-mono text-sm outline-none" inputMode="text"/></form><button onClick={handleSearch} className="h-12 px-6 rounded-lg font-bold text-black hover:brightness-110 active:scale-95 transition-all" style={{ backgroundColor: apiSettings.themeColor }}>查询</button></div></TiltCard>
             </div>
             <div className="relative z-10 px-6 pb-20 flex-1">
                 {/* ... (History & Announcement) ... */}
@@ -1949,7 +1969,7 @@ export default function App() {
                        <div className="flex justify-center pt-8"> <button onClick={() => { setHasSearched(false); setSearchQuery(''); setSearchResult(null); }} className="px-6 py-2 rounded-full border border-white/10 bg-white/5 text-xs text-white/50 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 active:scale-95" > <RefreshCw size={12} className="group-hover:rotate-180 transition-transform duration-500"/> 清空查询结果 </button> </div>
                     </div>
                 )}
-                {hasSearched && (!searchResult || searchResult.length === 0) && (<div className="mt-10 p-8 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm text-center animate-in zoom-in duration-300"><div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4"><Search size={24} className="text-white/20"/></div><h3 className="text-white font-bold text-lg mb-2">未查询到记录</h3><p className="text-white/40 text-xs font-mono mb-6">请核对您输入的信息是否正确</p><button onClick={() => { setHasSearched(false); setSearchQuery(''); setSearchResult(null); }} className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded text-xs font-bold text-white transition-colors uppercase tracking-wider active:scale-95">重试</button></div>)}
+                {hasSearched && (!searchResult || searchResult.length === 0) && (<div className="mt-10 p-8 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm text-center animate-in zoom-in duration-300"><div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4"><Search size={24} className="text-white/20"/></div><h3 className="text-white font-bold text-lg mb-2">未查询到记录</h3><p className="text-white/40 text-xs font-mono mb-6">请检查输入是否正确 (需输入完整11位手机号或运单号)</p><button onClick={() => { setHasSearched(false); setSearchQuery(''); setSearchResult(null); }} className="px-6 py-2 bg-white/10 hover:bg-white/20 rounded text-xs font-bold text-white transition-colors uppercase tracking-wider active:scale-95">重试</button></div>)}
             </div>
             <div className="relative z-10 py-4 text-center border-t border-white/5 bg-black/60 backdrop-blur-xl">
                 <div className="flex items-center justify-center gap-2 text-[10px] text-white/30 font-mono tracking-widest uppercase">
