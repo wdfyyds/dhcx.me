@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Search, Package, Copy, Plus, Trash2, LogIn, LogOut, User, Truck, CheckCircle, AlertCircle, X, Save, ExternalLink, MapPin, Globe, ArrowRight, Zap, ChevronDown, ChevronUp, RefreshCw, Clock, Disc, Settings, Upload, FileText, Share2, CornerUpRight, ClipboardList, PackageCheck, Hourglass, XCircle, Sparkles, Phone, MessageSquare, Menu, Globe2, ShieldCheck, Lock, Download, BarChart2, PieChart, LayoutGrid, List, CheckSquare, Square, Box, ChevronRight, Info, Home, Edit, Clipboard, AlertTriangle, Filter, Smartphone, Image as ImageIcon, Signal, Wifi, Battery, Calendar, Palette, Check, FileSpreadsheet, CreditCard, Layers, Activity, Eye, EyeOff, Play, Pause, Database, FileJson, MoreHorizontal, Volume2, VolumeX, Gift, Sparkle, Type, Link as LinkIcon, QrCode, Scissors, Bot, Cpu, Brain, Sparkles as SparklesIcon } from 'lucide-react';
+import { Search, Package, Copy, Plus, Trash2, LogIn, LogOut, User, Truck, CheckCircle, AlertCircle, X, Save, ExternalLink, MapPin, Globe, ArrowRight, Zap, ChevronDown, ChevronUp, RefreshCw, Clock, Disc, Settings, Upload, FileText, Share2, CornerUpRight, ClipboardList, PackageCheck, Hourglass, XCircle, Sparkles, Phone, MessageSquare, Menu, Globe2, ShieldCheck, Lock, Download, BarChart2, PieChart, LayoutGrid, List, CheckSquare, Square, Box, ChevronRight, Info, Home, Edit, Clipboard, AlertTriangle, Filter, Smartphone, Image as ImageIcon, Signal, Wifi, Battery, Calendar, Palette, Check, FileSpreadsheet, CreditCard, Layers, Activity, Eye, EyeOff, Play, Pause, Database, FileJson, MoreHorizontal, Volume2, VolumeX, Gift, Sparkle, Type, Link as LinkIcon, QrCode, Scissors, Bot, Cpu, Brain, Sparkles as SparklesIcon, ImageDown } from 'lucide-react';
 
 // --- 配置区域 (Supabase 信息) ---
 const SUPABASE_URL = "https://vfwgmzsppkdeqccflian.supabase.co"; 
@@ -7,7 +7,7 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 // --- 核心配置 ---
 const LOCAL_SETTINGS_KEY = 'dhcx.me_settings_v3_production'; 
-const SHORT_LINK_BASE_URL = 'https://dhcx.me'; // [修复] 短链固定域名，确保二维码链接正确
+const SHORT_LINK_BASE_URL = 'https://dhcx.me'; 
 
 // --- 通用工具 ---
 const loadScript = (src, globalName) => { 
@@ -22,44 +22,29 @@ const loadScript = (src, globalName) => {
     }); 
 };
 
-// --- 安全编码工具 (智能缩短策略 - 旧版降级方案) ---
+// --- 安全编码工具 ---
 const encodeToken = (str) => {
     if (!str) return '';
-    if (/^[A-Za-z0-9]+$/.test(str)) {
-        return str;
-    }
+    if (/^[A-Za-z0-9]+$/.test(str)) return str;
     try {
-        const base64 = btoa(unescape(encodeURIComponent(str)))
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=+$/, '');
+        const base64 = btoa(unescape(encodeURIComponent(str))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         return 'tk_' + base64;
-    } catch (e) {
-        return str; 
-    }
+    } catch (e) { return str; }
 };
 
 const decodeToken = (str) => {
     if (!str) return '';
     try {
-        if (!str.startsWith('tk_')) {
-            return str;
-        }
+        if (!str.startsWith('tk_')) return str;
         let base64 = str.slice(3).replace(/-/g, '+').replace(/_/g, '/');
         const pad = base64.length % 4;
-        if (pad) {
-            base64 += '='.repeat(4 - pad);
-        }
+        if (pad) base64 += '='.repeat(4 - pad);
         return decodeURIComponent(escape(atob(base64)));
-    } catch (e) {
-        console.warn("解码失败:", e);
-        return null; 
-    }
+    } catch (e) { console.warn("解码失败:", e); return null; }
 };
 
-// --- [新增] 短链生成工具 ---
 const generateShortCode = (length = 5) => {
-    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'; // 去除易混淆字符 0,1,I,l,O
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     let result = '';
     for (let i = 0; i < length; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -69,7 +54,6 @@ const generateShortCode = (length = 5) => {
 
 // --- 初始化 Supabase ---
 let supabase = null;
-
 const initSupabase = async () => {
     if (supabase) return supabase;
     if (typeof window !== 'undefined' && window.supabase) {
@@ -77,47 +61,186 @@ const initSupabase = async () => {
          return supabase;
     }
     try {
-        console.log("正在连接 Supabase...");
         const sb = await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', 'supabase');
         if (sb && sb.createClient) {
             supabase = sb.createClient(SUPABASE_URL, SUPABASE_KEY);
-            console.log("Supabase 连接成功");
-        } else {
-            console.warn("Supabase 连接未就绪");
         }
-    } catch (e) {
-        console.error("Supabase 初始化失败:", e);
-    }
+    } catch (e) { console.error("Supabase 初始化失败:", e); }
     return supabase;
 };
 
-// --- AI 核心逻辑 (模拟智能分析) ---
+// --- [组件] 二维码卡片弹窗 (集成 html-to-image) ---
+const QrCodeModal = ({ show, onClose, data, themeColor }) => {
+    const cardRef = useRef(null);
+    const [isSaving, setIsSaving] = useState(false);
+
+    if (!show) return null;
+
+    const handleDownloadImage = async () => {
+        setIsSaving(true);
+        try {
+            // 动态加载 html-to-image
+            if (!window.htmlToImage) {
+                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js', 'htmlToImage');
+            }
+
+            const element = cardRef.current;
+            if (!element) return;
+
+            // 过滤掉不想截图的元素（比如关闭按钮，虽然它在container外面，但为了保险起见）
+            const filter = (node) => {
+                return !node.classList?.contains('exclude-from-capture');
+            };
+
+            const dataUrl = await window.htmlToImage.toPng(element, { 
+                quality: 1.0, 
+                backgroundColor: '#ffffff', // 强制白色背景，防止圆角透明部分变黑
+                pixelRatio: 2, // 2倍图，更高清
+                filter: filter
+            });
+
+            const link = document.createElement('a');
+            link.download = `DHCX-Card-${data.info?.trackingNumber || 'Share'}.png`;
+            link.href = dataUrl;
+            link.click();
+
+        } catch (error) {
+            console.error('截图生成失败:', error);
+            alert("图片生成失败，请重试或截屏保存");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={onClose}>
+            <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300 w-full max-w-[320px]">
+                {/* 卡片主体 */}
+                <div 
+                    ref={cardRef}
+                    className="w-full relative overflow-hidden bg-white rounded-3xl shadow-2xl" 
+                    onClick={e => e.stopPropagation()}
+                >
+                    {/* 顶部装饰条 */}
+                    <div className="h-1.5 w-full" style={{ backgroundColor: themeColor }}></div>
+
+                    <div className="p-6 pb-2 relative z-10">
+                        {/* Header */}
+                        <div className="flex justify-between items-start mb-8">
+                            <div>
+                                <h1 className="text-3xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                                    DHCX<span style={{ color: themeColor }}>.ME</span>
+                                </h1>
+                                <p className="text-[9px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
+                            </div>
+                            
+                            <div className="bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
+                                <ShieldCheck size={10} className="opacity-70" />
+                                <span className="text-[10px] font-bold tracking-wider">内部查询通道</span>
+                            </div>
+                        </div>
+                        
+                        <div className="border-t-2 border-black mb-6"></div>
+                        
+                        <div className="space-y-6">
+                            <div className="flex justify-between items-baseline">
+                                <div>
+                                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">RECEIVER / 收件人</div>
+                                    <div className="text-base font-bold text-black">{data.info?.name}</div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">COURIER / 快递</div>
+                                    <div className="text-base font-black text-black font-mono">{data.info?.courier}</div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">ITEM / 商品</div>
+                                <div className="text-sm font-bold text-black break-words leading-relaxed border-l-2 pl-3" style={{ borderColor: themeColor }}>
+                                    {data.info?.product}
+                                </div>
+                            </div>
+
+                            <div className="bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
+                                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">TRACKING NO. / 单号</div>
+                                <div className="font-mono text-xl font-black text-black tracking-tight break-all leading-none">
+                                    {data.info?.trackingNumber}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Cutout Divider */}
+                    <div className="relative w-full h-6 flex items-center justify-center mt-2">
+                        <div className="absolute left-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div> 
+                        <div className="absolute right-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div>
+                        <div className="w-full border-t border-dashed border-gray-300 mx-4"></div>
+                    </div>
+
+                    {/* Footer Section */}
+                    <div className="p-6 pt-2 bg-white flex flex-col items-center">
+                        <div className="flex gap-4 items-center w-full">
+                            <div className="w-20 h-20 bg-white p-1 rounded-lg border border-black/5 shadow-sm shrink-0">
+                                {data.loading ? (
+                                    <div className="w-full h-full flex items-center justify-center"><RefreshCw size={24} className="animate-spin text-black/20"/></div>
+                                ) : (
+                                    <img src={data.url} alt="QR" className="w-full h-full object-contain mix-blend-multiply" crossOrigin="anonymous" />
+                                )}
+                            </div>
+                            <div className="flex-1 flex flex-col justify-center h-20">
+                                <div className="text-xs font-bold text-black mb-1">扫码实时追踪</div>
+                                <div className="text-[10px] text-gray-400 leading-tight">请使用微信或浏览器扫码<br/>获取最新物流动态</div>
+                                {/* Decorative bar */}
+                                <div className="h-3 w-32 mt-2 opacity-20" style={{ backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2r9//38gYGAEESAAEGAAGRgE+bRsBPwAAAAASUVORK5CYII=")`, backgroundRepeat: 'repeat' }}></div>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-6 text-[9px] font-mono text-gray-300 w-full text-center">
+                            ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
+                        </div>
+                    </div>
+                </div>
+
+                {/* 操作栏 (截图时不包含) */}
+                <div className="flex gap-3 w-full" onClick={e => e.stopPropagation()}>
+                    <button 
+                        onClick={handleDownloadImage}
+                        disabled={isSaving || data.loading}
+                        className="flex-1 bg-white hover:bg-gray-100 text-black py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 shadow-lg"
+                    >
+                        {isSaving ? <RefreshCw size={16} className="animate-spin"/> : <ImageDown size={16}/>}
+                        {isSaving ? "生成中..." : "保存卡片"}
+                    </button>
+                    <button onClick={onClose} className="w-12 h-12 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-all active:scale-95 backdrop-blur-md border border-white/10">
+                        <X size={20}/>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- AI 核心逻辑 ---
 const AI_BRAIN = {
     analyze: async (order, tracks) => {
-        // 模拟 AI 计算延迟
         await new Promise(resolve => setTimeout(resolve, 1500));
-
         const now = Date.now();
         const oneDay = 24 * 60 * 60 * 1000;
         let healthScore = 100;
         let diagnosis = [];
         let suggestions = [];
         let tone = 'neutral';
-        
-        // 1. 数据预处理
         const validTracks = Array.isArray(tracks) ? tracks.filter(t => t.time || t.ftime) : [];
         const latest = validTracks.length > 0 ? validTracks[0] : null;
         const lastUpdateTime = latest ? new Date(latest.time || latest.ftime).getTime() : order.timestamp;
         const daysSinceUpdate = (now - lastUpdateTime) / oneDay;
         const statusText = latest ? (latest.status || latest.context || latest.desc) : '未知';
 
-        // 2. 规则引擎分析
         if (!validTracks.length) {
             healthScore = 50;
             diagnosis.push("暂无物流轨迹数据");
             suggestions.push("建议核实运单号是否正确或刚刚发货");
         } else {
-            // 停滞检测
             if (daysSinceUpdate > 7) {
                 healthScore -= 40;
                 diagnosis.push(`⚠️ 包裹已停滞 ${Math.floor(daysSinceUpdate)} 天`);
@@ -128,8 +251,6 @@ const AI_BRAIN = {
                 diagnosis.push(`包裹超过 3 天未更新`);
                 suggestions.push("可能是中转站积压，建议安抚客户");
             }
-
-            // 关键词检测
             if (statusText.includes('拒收') || statusText.includes('退回') || statusText.includes('异常')) {
                 healthScore -= 50;
                 diagnosis.push("检测到异常状态（拒收/退回）");
@@ -144,112 +265,46 @@ const AI_BRAIN = {
             }
         }
 
-        // 3. 生成智能回复
         const replyOptions = [];
         const baseInfo = `亲，您的订单（${order.trackingNumber}）`;
-        
         if (tone === 'apologetic') {
-            replyOptions.push({
-                label: "安抚客户",
-                text: `${baseInfo}目前物流稍有滞留，我们已经向快递公司发起了催促，请您再耐心等待一下，有最新进展我会第一时间通知您！🙏`
-            });
+            replyOptions.push({ label: "安抚客户", text: `${baseInfo}目前物流稍有滞留，我们已经向快递公司发起了催促，请您再耐心等待一下，有最新进展我会第一时间通知您！🙏` });
         } else if (tone === 'urgent') {
-            replyOptions.push({
-                label: "异常处理",
-                text: `${baseInfo}显示状态异常，我这边正在帮您核实具体情况，请稍等，处理结果会尽快反馈给您。`
-            });
+            replyOptions.push({ label: "异常处理", text: `${baseInfo}显示状态异常，我这边正在帮您核实具体情况，请稍等，处理结果会尽快反馈给您。` });
         } else if (tone === 'happy') {
-             replyOptions.push({
-                label: "求好评",
-                text: `${baseInfo}已经显示签收啦！如果您对宝贝满意的话，麻烦给个好评支持一下哦，祝您生活愉快！❤️`
-            });
+             replyOptions.push({ label: "求好评", text: `${baseInfo}已经显示签收啦！如果您对宝贝满意的话，麻烦给个好评支持一下哦，祝您生活愉快！❤️` });
         } else {
-            replyOptions.push({
-                label: "常规回复",
-                text: `${baseInfo}目前正在正常运输中，最新状态：${statusText}。请您放心，我们会持续关注物流动态。`
-            });
+            replyOptions.push({ label: "常规回复", text: `${baseInfo}目前正在正常运输中，最新状态：${statusText}。请您放心，我们会持续关注物流动态。` });
         }
+        replyOptions.push({ label: "精简通知", text: `您的快递 ${order.courier} ${order.trackingNumber} 最新动态：${statusText}` });
 
-        // 兜底回复
-        replyOptions.push({
-            label: "精简通知",
-            text: `您的快递 ${order.courier} ${order.trackingNumber} 最新动态：${statusText}`
-        });
-
-        return {
-            score: Math.max(0, healthScore),
-            diagnosis,
-            suggestions,
-            replyOptions,
-            lastUpdate: daysSinceUpdate
-        };
+        return { score: Math.max(0, healthScore), diagnosis, suggestions, replyOptions, lastUpdate: daysSinceUpdate };
     }
 };
 
 // --- 数据服务层 ---
 const DataService = {
-    // --- [新增] 短链接服务 ---
-    // 获取或创建短链
     getOrCreateShortLink: async (queryText) => {
         if (!supabase) throw new Error("数据库未连接");
-        
-        // 1. 先查找是否已存在该内容的短链 (避免重复生成)
-        const { data: existing, error: findError } = await supabase
-            .from('short_urls')
-            .select('id')
-            .eq('original_query', queryText)
-            .limit(1);
-            
-        // [修复] 如果查询本身报错（例如表不存在），直接抛出错误，触发降级逻辑，不要进入生成循环
-        if (findError) {
-            console.warn("短链表查询失败 (可能是表未创建，将使用长链):", findError.message);
-            throw new Error("短链服务暂不可用");
-        }
-
-        if (existing && existing.length > 0) {
-            return existing[0].id;
-        }
-
-        // 2. 如果不存在，生成新的 (尝试最多3次以防冲突)
+        const { data: existing, error: findError } = await supabase.from('short_urls').select('id').eq('original_query', queryText).limit(1);
+        if (findError) throw new Error("短链服务暂不可用");
+        if (existing && existing.length > 0) return existing[0].id;
         let attempts = 0;
         while (attempts < 3) {
-            const code = generateShortCode(5); // 5位短码
-            const { error: insertError } = await supabase
-                .from('short_urls')
-                .insert([{ id: code, original_query: queryText }]);
-            
-            if (!insertError) {
-                return code;
-            }
-            
-            // [修复] 只有在主键冲突(23505)时才重试
-            if (insertError.code === '23505') {
-                console.log("短链冲突，重试生成...");
-                attempts++;
-                continue;
-            } else {
-                // 其他错误（如权限不足、表不存在）直接中断
-                console.warn("短链创建异常:", insertError.message);
-                throw new Error("短链创建失败: " + insertError.message);
-            }
+            const code = generateShortCode(5);
+            const { error: insertError } = await supabase.from('short_urls').insert([{ id: code, original_query: queryText }]);
+            if (!insertError) return code;
+            if (insertError.code === '23505') { attempts++; continue; } 
+            else throw new Error("短链创建失败: " + insertError.message);
         }
         throw new Error("短链生成繁忙，请使用长链");
     },
-
-    // 解析短链
     resolveShortLink: async (shortCode) => {
         if (!supabase) return null;
-        const { data, error } = await supabase
-            .from('short_urls')
-            .select('original_query')
-            .eq('id', shortCode)
-            .single();
-        
+        const { data, error } = await supabase.from('short_urls').select('original_query').eq('id', shortCode).single();
         if (error || !data) return null;
         return data.original_query;
     },
-    // --- [结束] 短链接服务 ---
-
     getOrders: async (page, pageSize, filters = {}) => {
         if (!supabase) throw new Error("数据库未连接");
         let query = supabase.from('orders').select('*', { count: 'exact' });
@@ -264,44 +319,18 @@ const DataService = {
         if (error) throw error;
         return { data: data || [], total: count || 0 };
     },
-    
-    // --- [修改] searchPublic: 隐私保护增强版 ---
     searchPublic: async (queryText) => {
         if (!supabase) throw new Error("系统初始化中，请刷新页面重试"); 
         if (!queryText) return [];
         const cleanQuery = queryText.trim().replace(/\s+/g, '');
-
-        // 隐私策略 V2:
-        // 1. 禁止姓名查询 (重名风险)
-        // 2. 禁止手机号模糊查询 (防猜测)
-        // 3. 只允许: 运单号 (精确) OR 完整手机号 (11位精确)
-
-        // 判断是否为有效的 11 位手机号
         const isPhoneNumber = /^\d{11}$/.test(cleanQuery);
-        
-        // 构造查询条件
         let orConditions = [];
-
-        // 始终允许查运单号 (精确匹配)
         orConditions.push(`trackingNumber.eq.${cleanQuery}`);
-
-        // 只有当输入确认为11位数字时，才允许查手机号 (精确匹配)
-        if (isPhoneNumber) {
-            orConditions.push(`phone.eq.${cleanQuery}`);
-        }
-
-        // 注意：这里我们移除了 `recipientName.eq` 和 `phone.like`
-        
-        const { data, error } = await supabase
-            .from('orders')
-            .select('*')
-            .or(orConditions.join(','))
-            .order('timestamp', { ascending: false });
-            
+        if (isPhoneNumber) orConditions.push(`phone.eq.${cleanQuery}`);
+        const { data, error } = await supabase.from('orders').select('*').or(orConditions.join(',')).order('timestamp', { ascending: false });
         if (error) throw error;
         return data || [];
     },
-    
     saveOrder: async (order) => {
         if (!supabase) throw new Error("数据库未连接");
         const orderData = { ...order, lastUpdated: Date.now() };
@@ -326,44 +355,29 @@ const DataService = {
         const { error } = await supabase.from('orders').delete().gt('timestamp', 0);
         if (error) throw error;
     },
-    
     removeDuplicates: async () => {
         if (!supabase) throw new Error("数据库未连接");
-        const { data, error } = await supabase
-            .from('orders')
-            .select('id, trackingNumber, timestamp')
-            .order('timestamp', { ascending: false });
-            
+        const { data, error } = await supabase.from('orders').select('id, trackingNumber, timestamp').order('timestamp', { ascending: false });
         if (error) throw error;
         if (!data || data.length === 0) return 0;
-
         const seenTrackingNumbers = new Set();
         const idsToDelete = [];
-
         data.forEach(item => {
             const tn = item.trackingNumber ? item.trackingNumber.trim() : null;
             if (!tn) return; 
-            if (seenTrackingNumbers.has(tn)) {
-                idsToDelete.push(item.id);
-            } else {
-                seenTrackingNumbers.add(tn);
-            }
+            if (seenTrackingNumbers.has(tn)) idsToDelete.push(item.id);
+            else seenTrackingNumbers.add(tn);
         });
-
         if (idsToDelete.length > 0) {
             const BATCH_SIZE = 100;
             for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
                 const batch = idsToDelete.slice(i, i + BATCH_SIZE);
-                const { error: delError } = await supabase
-                    .from('orders')
-                    .delete()
-                    .in('id', batch);
+                const { error: delError } = await supabase.from('orders').delete().in('id', batch);
                 if (delError) throw delError;
             }
         }
         return idsToDelete.length;
     },
-
     login: async (email, password) => {
         if (!supabase) throw new Error("数据库未连接");
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -376,9 +390,7 @@ const DataService = {
     },
     queryLogisticsFromEdge: async (trackingNumber, courierCode, phone) => {
         if (!supabase) throw new Error("数据库未连接");
-        if (!trackingNumber || trackingNumber.trim() === '') {
-             throw new Error("订单未关联快递单号");
-        }
+        if (!trackingNumber || trackingNumber.trim() === '') throw new Error("订单未关联快递单号");
         const mobileSuffix = phone ? String(phone).replace(/\D/g, '').slice(-4) : '';
         try {
             const { data, error } = await supabase.functions.invoke('query-logistics', {
@@ -389,34 +401,15 @@ const DataService = {
                 try {
                     if (error.context) {
                         const rawText = await error.context.text();
-                        try {
-                            const body = JSON.parse(rawText);
-                            detailMsg = body.error || body.message || rawText;
-                        } catch (jsonErr) {
-                            detailMsg = rawText; 
-                        }
-                    } else {
-                        detailMsg = error.message;
-                    }
-                } catch (e) { 
-                    detailMsg = error.message || "未知网络错误";
-                }
-                
-                // --- 针对常见错误代码的优化提示 ---
-                if (detailMsg.includes("400") || detailMsg.includes("Bad Request")) {
-                    detailMsg = "快递单号不存在或格式有误";
-                } else if (detailMsg.includes("403") || detailMsg.includes("Forbidden")) {
-                    detailMsg = "查询接口额度不足或已过期 (403)";
-                }
-                
-                console.error("Edge Function 报错:", detailMsg);
+                        try { const body = JSON.parse(rawText); detailMsg = body.error || body.message || rawText; } catch (jsonErr) { detailMsg = rawText; }
+                    } else { detailMsg = error.message; }
+                } catch (e) { detailMsg = error.message || "未知网络错误"; }
+                if (detailMsg.includes("400") || detailMsg.includes("Bad Request")) detailMsg = "快递单号不存在或格式有误";
+                else if (detailMsg.includes("403") || detailMsg.includes("Forbidden")) detailMsg = "查询接口额度不足或已过期 (403)";
                 throw new Error(detailMsg);
             }
             return data;
-        } catch (err) {
-            console.error("调用过程异常:", err);
-            throw err; 
-        }
+        } catch (err) { console.error("调用过程异常:", err); throw err; }
     },
     getSiteConfig: async () => {
         if (!supabase) return null;
@@ -457,9 +450,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const THEME_PRESETS = [{ color: '#CCFF00', name: '酸性绿' }, { color: '#FF00FF', name: '霓虹粉' }, { color: '#00FFFF', name: '赛博蓝' }, { color: '#FF3300', name: '熔岩红' }, { color: '#9D00FF', name: '电子紫' }, { color: '#FFFFFF', name: '极简白' }];
-const COURIER_CODE_MAP = { 
-    '顺丰速运': 'SFEX', '顺丰': 'SFEX', '京东物流': 'JD', '京东': 'JD', '圆通速递': 'YTO', '圆通': 'YTO', '中通快递': 'ZTO', '中通': 'ZTO', '申通快递': 'STO', '申通': 'STO', '韵达快递': 'YD', '韵达': 'YD', '极兔速递': 'JTS', '极兔': 'JTS', 'EMS': 'EMS', '邮政包裹': 'PS', '邮政': 'PS', '德邦快递': 'DEPPON', '德邦': 'DEPPON', '通用快递': '' 
-};
+const COURIER_CODE_MAP = { '顺丰速运': 'SFEX', '顺丰': 'SFEX', '京东物流': 'JD', '京东': 'JD', '圆通速递': 'YTO', '圆通': 'YTO', '中通快递': 'ZTO', '中通': 'ZTO', '申通快递': 'STO', '申通': 'STO', '韵达快递': 'YD', '韵达': 'YD', '极兔速递': 'JTS', '极兔': 'JTS', 'EMS': 'EMS', '邮政包裹': 'PS', '邮政': 'PS', '德邦快递': 'DEPPON', '德邦': 'DEPPON', '通用快递': '' };
 const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const STATUS_MAP = { "WAIT_ACCEPT": "待揽收", "ACCEPT": "已揽收", "TRANSPORT": "运输中", "DELIVERING": "派件中", "AGENT_SIGN": "已代签收", "SIGN": "已签收", "FAILED": "包裹异常", "RECEIVE": "接单中", "SEND_ON": "转单/转寄", "ARRIVE_CITY": "到达城市", "STA_INBOUND": "已入柜/站", "STA_SIGN": "从柜/站取出", "RETURN_SIGN": "退回签收", "REFUSE_SIGN": "拒收", "DELIVER_ABNORMAL": "派件异常", "RETENTION": "滞留件", "ISSUE": "问题件", "RETURN": "退回件", "DAMAGE": "破损", "CANCEL_ORDER": "揽件取消" };
 
@@ -478,7 +469,6 @@ const STATUS_STYLES = {
     '异常件': { color: 'text-[#FF0055]', bg: 'bg-[#FF0055]/10', border: 'border-[#FF0055]/30', icon: AlertTriangle, label: '异常件', glow: 'shadow-[0_0_15px_rgba(255,0,85,0.3)]', illustration: IllusAlert },
 };
 
-// --- Modified Typewriter Component with Caching ---
 const Typewriter = ({ text }) => {
     const [currentText, setCurrentText] = useState('');
     const [isTyping, setIsTyping] = useState(true);
@@ -486,24 +476,9 @@ const Typewriter = ({ text }) => {
         if (!text) return;
         const CACHE_KEY = 'dhcx_announcement_read_state';
         const hasSeen = localStorage.getItem(CACHE_KEY);
-        if (hasSeen) {
-            setCurrentText(text);
-            setIsTyping(false);
-            return;
-        }
-        let i = 0; 
-        setCurrentText(''); 
-        setIsTyping(true);
-        const timer = setInterval(() => { 
-            if (i < text.length) { 
-                setCurrentText(prev => prev + text.charAt(i)); 
-                i++; 
-            } else { 
-                clearInterval(timer); 
-                localStorage.setItem(CACHE_KEY, 'true');
-                setIsTyping(false); 
-            } 
-        }, 30);
+        if (hasSeen) { setCurrentText(text); setIsTyping(false); return; }
+        let i = 0; setCurrentText(''); setIsTyping(true);
+        const timer = setInterval(() => { if (i < text.length) { setCurrentText(prev => prev + text.charAt(i)); i++; } else { clearInterval(timer); localStorage.setItem(CACHE_KEY, 'true'); setIsTyping(false); } }, 30);
         return () => clearInterval(timer);
     }, [text]);
     return <span>{currentText}{isTyping && <span className="animate-pulse">|</span>}</span>;
@@ -541,14 +516,12 @@ const TiltCard = ({ children, className = "", style = {} }) => {
 
 const NoiseOverlay = () => (<div className="fixed inset-0 pointer-events-none z-[1] opacity-[0.03] mix-blend-overlay" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}></div>);
 
-const AcidBackground = ({ themeColor, mode = 'default', lowPowerMode = false }) => { // [修改] 增加 lowPowerMode
+const AcidBackground = ({ themeColor, mode = 'default', lowPowerMode = false }) => {
     const canvasRef = useRef(null);
     const particlesRef = useRef([]);
     const mouseRef = useRef({ x: -1000, y: -1000 });
     useEffect(() => {
-        // [修改] 如果是低电量模式，直接不执行动画逻辑
         if (lowPowerMode) return;
-
         const canvas = canvasRef.current; if (!canvas) return;
         const ctx = canvas.getContext('2d');
         let animationFrameId;
@@ -585,11 +558,10 @@ const AcidBackground = ({ themeColor, mode = 'default', lowPowerMode = false }) 
         };
         animate();
         return () => { window.removeEventListener('resize', resizeCanvas); window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('touchmove', handleTouchMove); cancelAnimationFrame(animationFrameId); };
-    }, [themeColor, mode, lowPowerMode]); // [修改] 依赖 lowPowerMode
+    }, [themeColor, mode, lowPowerMode]);
 
     return (
         <div className="fixed inset-0 z-0 bg-black overflow-hidden">
-            {/* [修改] 静态背景逻辑：低电量模式下不渲染动态 Blob */}
             {(mode !== 'matrix' && mode !== 'fire' && mode !== 'party' && mode !== 'rain') && (
                 <>
                     {!lowPowerMode && (
@@ -601,150 +573,60 @@ const AcidBackground = ({ themeColor, mode = 'default', lowPowerMode = false }) 
                     <div className="absolute inset-0 bg-grid-white/[0.015] bg-[length:30px_30px]"></div>
                 </>
             )}
-            {/* [修改] 低电量模式下不渲染 Canvas */}
             {!lowPowerMode && <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />}
-             {/* [新增] 低电量模式下的替代静态背景 */}
              {lowPowerMode && <div className="absolute inset-0 bg-gradient-to-b from-black via-[#0a0a0a] to-black opacity-80"></div>}
         </div>
     );
 };
 
-// --- [新增] AI 分析模态框组件 ---
+// --- AI Modal ---
 const AIAnalysisModal = ({ show, onClose, order, analysis, loading, themeColor }) => {
     if (!show) return null;
-
     const copyReply = async (text) => {
-        try {
-             await navigator.clipboard.writeText(text);
-             // 简单的 alert 替代 toast，实际环境应使用 toast
-             alert("回复话术已复制！");
-        } catch(e) {
-             alert("复制失败，请手动复制");
-        }
+        try { await navigator.clipboard.writeText(text); alert("回复话术已复制！"); } catch(e) { alert("复制失败，请手动复制"); }
     };
-
     return (
         <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4 animate-in fade-in duration-300">
             <div className="w-full max-w-lg bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
-                {/* 装饰性背景 */}
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-cyan-500 to-purple-500 animate-gradient-x"></div>
                 <div className="absolute -top-20 -right-20 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl"></div>
                 <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl"></div>
-
-                {/* Header */}
                 <div className="p-6 border-b border-white/5 relative z-10 flex justify-between items-center bg-white/[0.02]">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center border border-white/10 shadow-inner">
-                            <Brain size={20} className="text-cyan-400" />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                                DHCX AI Brain
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50 font-mono">BETA</span>
-                            </h3>
-                            <p className="text-xs text-white/40 font-mono">智能物流分析引擎</p>
-                        </div>
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center border border-white/10 shadow-inner"><Brain size={20} className="text-cyan-400" /></div>
+                        <div><h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">DHCX AI Brain<span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50 font-mono">BETA</span></h3><p className="text-xs text-white/40 font-mono">智能物流分析引擎</p></div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors">
-                        <X size={20} />
-                    </button>
+                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors"><X size={20} /></button>
                 </div>
-
-                {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 relative z-10 custom-scrollbar">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                            <div className="relative">
-                                <Cpu size={48} className="text-white/20 animate-pulse" />
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <div className="w-full h-full absolute animate-ping rounded-full bg-cyan-500/20"></div>
-                                </div>
-                            </div>
+                            <div className="relative"><Cpu size={48} className="text-white/20 animate-pulse" /><div className="absolute inset-0 flex items-center justify-center"><div className="w-full h-full absolute animate-ping rounded-full bg-cyan-500/20"></div></div></div>
                             <div className="text-sm font-mono text-cyan-400 animate-pulse">正在分析物流轨迹...</div>
                             <div className="text-xs text-white/30">计算时效 · 检测异常 · 生成话术</div>
                         </div>
                     ) : (
                         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-                            {/* 1. 健康度评分 */}
                             <div className="bg-white/5 rounded-xl p-5 border border-white/5 flex items-center justify-between">
-                                <div>
-                                    <div className="text-xs text-white/40 uppercase tracking-widest mb-1">物流健康度</div>
-                                    <div className={`text-3xl font-black ${analysis.score > 80 ? 'text-[#CCFF00]' : (analysis.score > 50 ? 'text-orange-400' : 'text-red-500')}`}>
-                                        {analysis.score}<span className="text-sm text-white/20 ml-1">/ 100</span>
-                                    </div>
-                                </div>
+                                <div><div className="text-xs text-white/40 uppercase tracking-widest mb-1">物流健康度</div><div className={`text-3xl font-black ${analysis.score > 80 ? 'text-[#CCFF00]' : (analysis.score > 50 ? 'text-orange-400' : 'text-red-500')}`}>{analysis.score}<span className="text-sm text-white/20 ml-1">/ 100</span></div></div>
                                 <div className="h-12 w-px bg-white/10 mx-4"></div>
-                                <div className="flex-1">
-                                    <div className="flex flex-wrap gap-2">
-                                        {analysis.diagnosis.map((diag, i) => (
-                                            <div key={i} className="text-xs px-2 py-1 rounded bg-white/5 text-white/80 border border-white/10 flex items-center gap-1.5">
-                                                <div className={`w-1.5 h-1.5 rounded-full ${diag.includes('异常') || diag.includes('停滞') ? 'bg-red-500' : 'bg-[#CCFF00]'}`}></div>
-                                                {diag}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                <div className="flex-1"><div className="flex flex-wrap gap-2">{analysis.diagnosis.map((diag, i) => (<div key={i} className="text-xs px-2 py-1 rounded bg-white/5 text-white/80 border border-white/10 flex items-center gap-1.5"><div className={`w-1.5 h-1.5 rounded-full ${diag.includes('异常') || diag.includes('停滞') ? 'bg-red-500' : 'bg-[#CCFF00]'}`}></div>{diag}</div>))}</div></div>
                             </div>
-
-                            {/* 2. 智能建议 */}
-                            <div>
-                                <h4 className="text-xs font-bold text-white/40 uppercase mb-3 flex items-center gap-2">
-                                    <SparklesIcon size={12} className="text-purple-400" /> 智能建议
-                                </h4>
-                                <div className="space-y-2">
-                                    {analysis.suggestions.map((sug, i) => (
-                                        <div key={i} className="text-sm text-white/70 flex gap-2 items-start bg-purple-500/5 p-3 rounded-lg border border-purple-500/10">
-                                            <ArrowRight size={14} className="mt-0.5 text-purple-400 shrink-0" />
-                                            {sug}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* 3. 生成回复 */}
-                            <div>
-                                <h4 className="text-xs font-bold text-white/40 uppercase mb-3 flex items-center gap-2">
-                                    <MessageSquare size={12} className="text-cyan-400" /> 客服话术生成
-                                </h4>
-                                <div className="grid gap-3">
-                                    {analysis.replyOptions.map((opt, i) => (
-                                        <div key={i} className="bg-black/40 border border-white/10 rounded-xl p-4 hover:border-cyan-500/30 transition-colors group">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-xs font-bold text-cyan-400 px-2 py-0.5 rounded bg-cyan-900/20 border border-cyan-500/20">{opt.label}</span>
-                                                <button onClick={() => copyReply(opt.text)} className="text-xs flex items-center gap-1 text-white/40 hover:text-white transition-colors">
-                                                    <Copy size={12} /> 复制
-                                                </button>
-                                            </div>
-                                            <p className="text-xs text-white/60 leading-relaxed font-mono select-all">
-                                                {opt.text}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                            <div><h4 className="text-xs font-bold text-white/40 uppercase mb-3 flex items-center gap-2"><SparklesIcon size={12} className="text-purple-400" /> 智能建议</h4><div className="space-y-2">{analysis.suggestions.map((sug, i) => (<div key={i} className="text-sm text-white/70 flex gap-2 items-start bg-purple-500/5 p-3 rounded-lg border border-purple-500/10"><ArrowRight size={14} className="mt-0.5 text-purple-400 shrink-0" />{sug}</div>))}</div></div>
+                            <div><h4 className="text-xs font-bold text-white/40 uppercase mb-3 flex items-center gap-2"><MessageSquare size={12} className="text-cyan-400" /> 客服话术生成</h4><div className="grid gap-3">{analysis.replyOptions.map((opt, i) => (<div key={i} className="bg-black/40 border border-white/10 rounded-xl p-4 hover:border-cyan-500/30 transition-colors group"><div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-cyan-400 px-2 py-0.5 rounded bg-cyan-900/20 border border-cyan-500/20">{opt.label}</span><button onClick={() => copyReply(opt.text)} className="text-xs flex items-center gap-1 text-white/40 hover:text-white transition-colors"><Copy size={12} /> 复制</button></div><p className="text-xs text-white/60 leading-relaxed font-mono select-all">{opt.text}</p></div>))}</div></div>
                         </div>
                     )}
                 </div>
-                
-                {/* Footer */}
-                 {!loading && (
-                    <div className="p-4 border-t border-white/5 bg-white/[0.02] text-center">
-                        <p className="text-[10px] text-white/20 font-mono">Generated by DHCX AI Engine · 仅供参考</p>
-                    </div>
-                )}
+                 {!loading && (<div className="p-4 border-t border-white/5 bg-white/[0.02] text-center"><p className="text-[10px] text-white/20 font-mono">Generated by DHCX AI Engine · 仅供参考</p></div>)}
             </div>
         </div>
     );
 };
 
 const getSimplifiedStatus = (apiStatus) => {
-    // [修复] 优先判断是否为"无轨迹"或"待揽收"状态
     if (!apiStatus) return '待揽收';
     const s = String(apiStatus).toUpperCase();
-
-    // [修复] 检查是否包含"暂无轨迹"或"待揽收"等表示信息缺失的关键词
     if (s.includes('待揽收') || s.includes('WAIT_ACCEPT') || s.includes('暂无轨迹') || s.includes('稍后再试') || s.includes('暂无详细轨迹') || s.includes('未找到')) return '待揽收';
-
     if (s.includes('SIGN') || s.includes('签收') || s.includes('取件')) return '已签收';
     if (s.includes('FAIL') || s.includes('ISSUE') || s.includes('REFUSE') || s.includes('异常') || s.includes('拒收')) return '异常件';
     if (s.includes('DELIVER') || s.includes('派件') || s.includes('派送')) return '派件中';
@@ -796,7 +678,6 @@ export default function App() {
     const [logisticsDataCache, setLogisticsDataCache] = useState({});
     const [isAdmin, setIsAdmin] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    // [修复] 修正 useState 初始化 Set 的语法错误：使用函数初始化
     const [selectedOrders, setSelectedOrders] = useState(() => new Set());
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -808,7 +689,6 @@ export default function App() {
     const [showEditModal, setShowEditModal] = useState(false);
     const [confirmModal, setConfirmModal] = useState(null); 
     const [showImportModal, setShowImportModal] = useState(false);
-    // [新增] 二维码弹窗状态
     const [qrCodeModal, setQrCodeModal] = useState({ show: false, url: '', title: '', info: null, loading: false });
     const [importText, setImportText] = useState(''); 
     const [importMode, setImportMode] = useState('append');
@@ -824,106 +704,33 @@ export default function App() {
     const [isSaving, setIsSaving] = useState(false); 
     const [isImporting, setIsImporting] = useState(false);
     const [isDeduplicating, setIsDeduplicating] = useState(false);
-    
-    // [新增] AI Modal 状态
     const [aiModal, setAiModal] = useState({ show: false, order: null, analysis: null, loading: false });
-
-    // [新增] 低电量模式状态
-    const [lowPowerMode, setLowPowerMode] = useState(() => {
-        try {
-            return localStorage.getItem('dhcx_low_power_mode') === 'true';
-        } catch (e) { return false; }
-    });
-
+    const [lowPowerMode, setLowPowerMode] = useState(() => { try { return localStorage.getItem('dhcx_low_power_mode') === 'true'; } catch (e) { return false; } });
     const [apiSettings, setApiSettings] = useState(DEFAULT_SETTINGS);
     const [newOrder, setNewOrder] = useState({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' });
-    
     const [securityCodeInput, setSecurityCodeInput] = useState('');
-    
     const statusClickRef = useRef({ count: 0, lastTime: 0 });
 
     const showToast = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
-    
-    // [新增] 切换低电量模式
-    const toggleLowPowerMode = () => {
-        const nextState = !lowPowerMode;
-        setLowPowerMode(nextState);
-        localStorage.setItem('dhcx_low_power_mode', String(nextState));
-        showToast(nextState ? "已开启低电量模式 (关闭特效)" : "已开启高画质特效", "success");
-    };
+    const toggleLowPowerMode = () => { const nextState = !lowPowerMode; setLowPowerMode(nextState); localStorage.setItem('dhcx_low_power_mode', String(nextState)); showToast(nextState ? "已开启低电量模式 (关闭特效)" : "已开启高画质特效", "success"); };
 
-    // --- 核心初始化与自动查询逻辑 ---
     useEffect(() => {
         const initialize = async () => {
             const sb = await initSupabase();
             if (sb) {
                 const remoteSettings = await DataService.getSiteConfig();
-                if (remoteSettings && Object.keys(remoteSettings).length > 0) {
-                    setApiSettings(prev => ({ ...prev, ...remoteSettings }));
-                } else {
-                    try { 
-                        const storedSettings = localStorage.getItem(LOCAL_SETTINGS_KEY); 
-                        if (storedSettings) {
-                            const loadedSettings = JSON.parse(storedSettings);
-                            setApiSettings(prev => ({ ...prev, ...loadedSettings })); 
-                        }
-                    } catch (e) { console.error(e); }
-                }
-                
+                if (remoteSettings && Object.keys(remoteSettings).length > 0) setApiSettings(prev => ({ ...prev, ...remoteSettings }));
+                else { try { const storedSettings = localStorage.getItem(LOCAL_SETTINGS_KEY); if (storedSettings) { const loadedSettings = JSON.parse(storedSettings); setApiSettings(prev => ({ ...prev, ...loadedSettings })); } } catch (e) { console.error(e); } }
                 const { data: { session } } = await sb.auth.getSession();
                 setIsAdmin(!!session);
                 if (session) fetchAdminOrders();
-                
-                sb.auth.onAuthStateChange((_event, session) => {
-                    setIsAdmin(!!session);
-                    if (session) {
-                        setCurrentView('admin'); 
-                        fetchAdminOrders();
-                    } else {
-                        setCurrentView('search'); 
-                    }
-                });
-
+                sb.auth.onAuthStateChange((_event, session) => { setIsAdmin(!!session); if (session) { setCurrentView('admin'); fetchAdminOrders(); } else { setCurrentView('search'); } });
                 const params = new URLSearchParams(window.location.search);
-                
                 let shortCode = params.get('s');
                 const q = params.get('q');
-                
-                if (!shortCode && !q) {
-                    const pathSegment = window.location.pathname.slice(1);
-                    if (pathSegment && /^[a-zA-Z0-9]+$/.test(pathSegment)) {
-                        shortCode = pathSegment;
-                    }
-                }
-
-                if (!shortCode && !q) {
-                    const hash = window.location.hash;
-                    if (hash && hash.length > 1) {
-                        const code = hash.replace(/^#\/?/, '');
-                        if (code && /^[a-zA-Z0-9]+$/.test(code)) {
-                            shortCode = code;
-                        }
-                    }
-                }
-                
-                if (shortCode) {
-                    DataService.resolveShortLink(shortCode).then(originalQuery => {
-                        if (originalQuery) {
-                            setSearchQuery(originalQuery);
-                            handleSearch(null, originalQuery);
-                        } else {
-                            showToast("短链已失效或不存在", "error");
-                        }
-                    });
-                } else if (q) {
-                    const decodedQuery = decodeToken(q); 
-                    if (decodedQuery) { 
-                        setSearchQuery(decodedQuery);
-                        handleSearch(null, decodedQuery); 
-                    }
-                }
-            } else {
-                console.warn("Supabase SDK 未能加载");
+                if (!shortCode && !q) { const pathSegment = window.location.pathname.slice(1); if (pathSegment && /^[a-zA-Z0-9]+$/.test(pathSegment)) shortCode = pathSegment; }
+                if (!shortCode && !q) { const hash = window.location.hash; if (hash && hash.length > 1) { const code = hash.replace(/^#\/?/, ''); if (code && /^[a-zA-Z0-9]+$/.test(code)) shortCode = code; } }
+                if (shortCode) { DataService.resolveShortLink(shortCode).then(originalQuery => { if (originalQuery) { setSearchQuery(originalQuery); handleSearch(null, originalQuery); } else { showToast("短链已失效或不存在", "error"); } }); } else if (q) { const decodedQuery = decodeToken(q); if (decodedQuery) { setSearchQuery(decodedQuery); handleSearch(null, decodedQuery); } }
             }
             setLoading(false);
         };
@@ -932,111 +739,33 @@ export default function App() {
 
     const fetchAdminOrders = useCallback(async () => {
         setLoading(true);
-        try {
-            const { data, total } = await DataService.getOrders(currentPage, itemsPerPage, {
-                search: adminSearchQuery,
-                status: filterStatus,
-                time: filterTime
-            });
-            setOrders(data || []);
-            setTotalOrdersCount(total || 0);
-        } catch (e) {
-            console.error(e);
-            showToast("加载失败: " + String(e.message), "error");
-        } finally {
-            setLoading(false);
-        }
+        try { const { data, total } = await DataService.getOrders(currentPage, itemsPerPage, { search: adminSearchQuery, status: filterStatus, time: filterTime }); setOrders(data || []); setTotalOrdersCount(total || 0); } catch (e) { console.error(e); showToast("加载失败: " + String(e.message), "error"); } finally { setLoading(false); }
     }, [currentPage, itemsPerPage, adminSearchQuery, filterStatus, filterTime]);
 
-    useEffect(() => {
-        if (currentView === 'admin' && adminViewMode === 'list') {
-            fetchAdminOrders();
-        }
-    }, [fetchAdminOrders, currentView, adminViewMode]);
+    useEffect(() => { if (currentView === 'admin' && adminViewMode === 'list') fetchAdminOrders(); }, [fetchAdminOrders, currentView, adminViewMode]);
 
-    const handleStatusMultiClick = (e, order) => {
-        e.stopPropagation(); 
-        const now = Date.now();
-        const record = statusClickRef.current;
-        if (now - record.lastTime > 500) {
-            record.count = 1;
-        } else {
-            record.count += 1;
-        }
-        record.lastTime = now;
-        if (record.count >= 5) {
-            handleQuickCopyReply(order);
-            record.count = 0;
-        }
-    };
-
-    const handleClearAllClick = () => {
-         setSecurityCodeInput(''); 
-         setConfirmModal({ type: 'clear_all' });
-    };
+    const handleStatusMultiClick = (e, order) => { e.stopPropagation(); const now = Date.now(); const record = statusClickRef.current; if (now - record.lastTime > 500) record.count = 1; else record.count += 1; record.lastTime = now; if (record.count >= 5) { handleQuickCopyReply(order); record.count = 0; } };
+    const handleClearAllClick = () => { setSecurityCodeInput(''); setConfirmModal({ type: 'clear_all' }); };
     
     const handleDeduplicate = async () => {
         if (!isAdmin) return;
-        if (!window.confirm("⚠️ 确定要执行去重操作吗？\n\n系统将检查所有订单，对于重复的运单号，仅保留【最后一次上传/更新】的记录，删除旧记录。\n\n此操作不可恢复！")) {
-            return;
-        }
-
+        if (!window.confirm("⚠️ 确定要执行去重操作吗？\n\n系统将检查所有订单，对于重复的运单号，仅保留【最后一次上传/更新】的记录，删除旧记录。\n\n此操作不可恢复！")) return;
         setIsDeduplicating(true);
-        try {
-            const count = await DataService.removeDuplicates();
-            if (count > 0) {
-                showToast(`去重成功！已清理 ${count} 条重复数据`, "success");
-                fetchAdminOrders(); // 刷新列表
-            } else {
-                showToast("未发现重复运单", "success");
-            }
-        } catch (e) {
-            showToast("去重失败: " + String(e.message), "error");
-        } finally {
-            setIsDeduplicating(false);
-        }
+        try { const count = await DataService.removeDuplicates(); if (count > 0) { showToast(`去重成功！已清理 ${count} 条重复数据`, "success"); fetchAdminOrders(); } else { showToast("未发现重复运单", "success"); } } catch (e) { showToast("去重失败: " + String(e.message), "error"); } finally { setIsDeduplicating(false); }
     };
 
     const executeDelete = async () => { 
         if (!confirmModal) return; 
         try {
-            if (confirmModal.type === 'clear_all') {
-                if (securityCodeInput !== 'wT357212') {
-                    showToast("安全码错误，操作拒绝！", "error");
-                    return;
-                }
-                await DataService.deleteAllOrders();
-                setOrders([]);
-                setTotalOrdersCount(0);
-                showToast("验证通过，所有订单已清空");
-            } else {
-                let ordersToDelete = []; 
-                if (confirmModal.type === 'batch') { ordersToDelete = Array.from(selectedOrders); } 
-                else if (confirmModal.id) { ordersToDelete = [confirmModal.id]; } 
-                await DataService.deleteOrders(ordersToDelete);
-                setSelectedOrders(new Set());
-                showToast("删除成功"); 
-                fetchAdminOrders();
-            }
-            setConfirmModal(null); 
-        } catch (e) {
-            showToast("操作失败: " + String(e.message), "error");
-        }
+            if (confirmModal.type === 'clear_all') { if (securityCodeInput !== 'wT357212') { showToast("安全码错误，操作拒绝！", "error"); return; } await DataService.deleteAllOrders(); setOrders([]); setTotalOrdersCount(0); showToast("验证通过，所有订单已清空"); } else { let ordersToDelete = []; if (confirmModal.type === 'batch') { ordersToDelete = Array.from(selectedOrders); } else if (confirmModal.id) { ordersToDelete = [confirmModal.id]; } await DataService.deleteOrders(ordersToDelete); setSelectedOrders(new Set()); showToast("删除成功"); fetchAdminOrders(); } setConfirmModal(null); 
+        } catch (e) { showToast("操作失败: " + String(e.message), "error"); }
     };
 
-    const statusCounts = useMemo(() => { 
-        const counts = { total: totalOrdersCount || orders.length, '已签收': 0, '派件中': 0, '中转中': 0, '待揽收': 0, '异常件': 0 }; 
-        if (orders && Array.isArray(orders)) {
-            orders.forEach(order => { const simplifiedStatus = getSimplifiedStatus(order.lastApiStatus); if (counts[simplifiedStatus] !== undefined) { counts[simplifiedStatus] += 1; } else { counts['中转中'] += 1; } }); 
-        }
-        return counts; 
-    }, [orders, totalOrdersCount]);
-
+    const statusCounts = useMemo(() => { const counts = { total: totalOrdersCount || orders.length, '已签收': 0, '派件中': 0, '中转中': 0, '待揽收': 0, '异常件': 0 }; if (orders && Array.isArray(orders)) { orders.forEach(order => { const simplifiedStatus = getSimplifiedStatus(order.lastApiStatus); if (counts[simplifiedStatus] !== undefined) { counts[simplifiedStatus] += 1; } else { counts['中转中'] += 1; } }); } return counts; }, [orders, totalOrdersCount]);
     const totalPages = Math.ceil((totalOrdersCount || orders.length) / itemsPerPage);
 
     useEffect(() => {
         const style = document.createElement('style');
-        // [修改] 注入 JetBrains Mono 字体
         style.innerHTML = `
             @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
             @keyframes blob { 0% { transform: translate(0px, 0px) scale(1); } 33% { transform: translate(30px, -50px) scale(1.1); } 66% { transform: translate(-20px, 20px) scale(0.9); } 100% { transform: translate(0px, 0px) scale(1); } } .animate-blob { animation: blob 7s infinite; } .animation-delay-2000 { animation-delay: 2s; } .animation-delay-4000 { animation-delay: 4s; } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; } .custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; } @keyframes pulse { 0% { opacity: 0.5; transform: scale(1); } 100% { opacity: 1; transform: scale(1.5); } } @keyframes driftX { 0% { transform: translateX(0); } 100% { transform: translateX(50px); } } @keyframes driftY { 0% { transform: translateY(0); } 100% { transform: translateY(50px); } } @keyframes ping-fast { 0% { transform: scale(0.5); opacity: 1; } 100% { transform: scale(3); opacity: 0; } } .animate-ping-fast { animation: ping-fast 0.6s cubic-bezier(0, 0, 0.2, 1) forwards; } @keyframes particle-burst { 0% { transform: translate(0, 0) scale(1); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; } } .animate-particle-burst { animation: particle-burst 0.5s ease-out forwards; } .safe-bottom { padding-bottom: env(safe-area-inset-bottom); } .pb-safe { padding-bottom: env(safe-area-inset-bottom); } .safe-top { padding-top: env(safe-area-inset-top); } @keyframes gradient-x { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } } .animate-gradient-x { background-size: 200% 200%; animation: gradient-x 3s ease infinite; }`;
@@ -1044,45 +773,24 @@ export default function App() {
     }, []);
 
     useEffect(() => { if (apiSettings.siteTitle) document.title = apiSettings.siteTitle; }, [apiSettings.siteTitle]);
-
     useEffect(() => {
         const query = searchQuery.trim().toLowerCase();
         if (query === 'matrix') setEasterEggMode('matrix'); else if (query === 'snow') setEasterEggMode('snow'); else if (query === 'fire') setEasterEggMode('fire'); else if (query === 'party') setEasterEggMode('party'); else if (query === 'galaxy') setEasterEggMode('galaxy'); else if (query === 'rain') setEasterEggMode('rain'); else setEasterEggMode(null); 
     }, [searchQuery]);
-
     const activeBackgroundMode = useMemo(() => { if (easterEggMode) return easterEggMode; return 'default'; }, [easterEggMode]);
 
     const [visitStats, setVisitStats] = useState({ pv: 0, uv: 0 });
     useEffect(() => { if (currentView !== 'search') return; const today = new Date().toISOString().slice(0, 10); const statsKey = `dhcx_stats_${today}`; let stats = JSON.parse(localStorage.getItem(statsKey) || '{"pv":0, "ips":[]}'); const sessionId = sessionStorage.getItem('dhcx_session_id') || crypto.randomUUID(); sessionStorage.setItem('dhcx_session_id', sessionId); stats.pv += 1; if (!stats.ips.includes(sessionId)) stats.ips.push(sessionId); localStorage.setItem(statsKey, JSON.stringify(stats)); setVisitStats({ pv: stats.pv, uv: stats.ips.length }); }, [currentView]);
 
     const saveSettingsToLocal = useCallback((newSettings) => { setApiSettings(newSettings); localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(newSettings)); }, []);
-    
-    const saveApiSettings = async () => { 
-        if (!isAdmin) { showToast("无权限保存", "error"); return; } 
-        setIsSaving(true); 
-        try { 
-            await DataService.saveSiteConfig(apiSettings);
-            localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(apiSettings)); 
-            showToast("配置已同步至全站！"); 
-            setTimeout(() => { setCurrentView('search'); }, 1000); 
-        } catch (e) { 
-            showToast("保存失败: " + String(e.message), "error"); 
-        } finally { 
-            setIsSaving(false); 
-        } 
-    };
+    const saveApiSettings = async () => { if (!isAdmin) { showToast("无权限保存", "error"); return; } setIsSaving(true); try { await DataService.saveSiteConfig(apiSettings); localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(apiSettings)); showToast("配置已同步至全站！"); setTimeout(() => { setCurrentView('search'); }, 1000); } catch (e) { showToast("保存失败: " + String(e.message), "error"); } finally { setIsSaving(false); } };
     
     const handleLogoUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         if (!file.type.startsWith('image/')) { showToast("请上传图片文件", "error"); return; }
         const reader = new FileReader();
-        reader.onload = (event) => {
-            const base64Image = event.target.result;
-            setApiSettings(p => ({...p, logoUrl: base64Image}));
-            showToast("本地图片已上传 (保存后生效)", "success");
-            e.target.value = ''; 
-        };
+        reader.onload = (event) => { const base64Image = event.target.result; setApiSettings(p => ({...p, logoUrl: base64Image})); showToast("本地图片已上传 (保存后生效)", "success"); e.target.value = ''; };
         reader.onerror = () => { showToast("读取文件失败", "error"); };
         reader.readAsDataURL(file);
     };
@@ -1091,10 +799,7 @@ export default function App() {
     
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
-        
-        setIsImporting(true);
-        await new Promise(resolve => setTimeout(resolve, 100));
-
+        setIsImporting(true); await new Promise(resolve => setTimeout(resolve, 100));
         try {
             const lines = importText.replace(/"/g, '').trim().replace(/\r/g, '').split('\n'); let newOrdersData = [];
             lines.forEach((line, index) => { 
@@ -1108,41 +813,21 @@ export default function App() {
                     if (parts.length > 0) { recipientName = parts[0]; if (parts.length > 1) product = parts.slice(1).join(' '); }
                     if (trackingNumber) { 
                         let finalCourier = courier || autoDetectCourier(trackingNumber); if (courier && !/快递|速运|物流|EMS/.test(courier)) finalCourier += '快递';
-                        
                         const orderId = trackingNumber.trim();
                         newOrdersData.push({ id: orderId, recipientName: recipientName || '未知', phone: phone || '', product: product || '商品', courier: finalCourier, trackingNumber, note: '导入', timestamp: Date.now() - index, lastUpdated: Date.now() }); 
                     } 
                 } 
             });
-
             if (newOrdersData.length > 0) { 
-                const uniqueMap = new Map();
-                newOrdersData.forEach(item => {
-                    if (item.id) {
-                        uniqueMap.set(item.id, item);
-                    }
-                });
+                const uniqueMap = new Map(); newOrdersData.forEach(item => { if (item.id) uniqueMap.set(item.id, item); });
                 const uniqueOrdersData = Array.from(uniqueMap.values());
                 const removedCount = newOrdersData.length - uniqueOrdersData.length;
-
                 await DataService.batchSaveOrders(uniqueOrdersData);
-                
                 let msg = `成功处理 ${uniqueOrdersData.length} 条数据！`;
-                if (removedCount > 0) {
-                    msg += ` (自动过滤了 ${removedCount} 条本次重复数据)`;
-                }
-                showToast(msg); 
-                
-                setImportText(''); setShowImportModal(false); 
-                fetchAdminOrders(); 
-            } else { 
-                showToast("未识别到有效数据", "error"); 
-            }
-        } catch (e) { 
-            showToast("导入失败: " + String(e.message), "error"); 
-        } finally {
-            setIsImporting(false);
-        }
+                if (removedCount > 0) msg += ` (自动过滤了 ${removedCount} 条本次重复数据)`;
+                showToast(msg); setImportText(''); setShowImportModal(false); fetchAdminOrders(); 
+            } else { showToast("未识别到有效数据", "error"); }
+        } catch (e) { showToast("导入失败: " + String(e.message), "error"); } finally { setIsImporting(false); }
     };
 
     const handleSaveOrder = async () => { 
@@ -1151,88 +836,29 @@ export default function App() {
             const id = isEditing ? newOrder.id : newOrder.trackingNumber.trim(); 
             const updatedOrder = { ...newOrder, id };
             await DataService.saveOrder(updatedOrder);
-            showToast(isEditing ? "修改成功" : "录入成功"); 
-            setIsEditing(false); setShowEditModal(false); 
-            setNewOrder({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' }); 
-            fetchAdminOrders();
+            showToast(isEditing ? "修改成功" : "录入成功"); setIsEditing(false); setShowEditModal(false); setNewOrder({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' }); fetchAdminOrders();
         } catch(e) { showToast("保存失败: " + String(e.message), "error"); } 
     };
 
     const handleDeleteOrderClick = (id) => { setConfirmModal({ type: 'single', id }); };
     const handleBatchDeleteClick = () => { if (selectedOrders.size === 0) return; setConfirmModal({ type: 'batch', count: selectedOrders.size }); };
-    
     const handleEditOrderClick = (order) => { setNewOrder(order); setIsEditing(true); setShowEditModal(true); };
     const handleTrackingNumberChange = (e) => { const val = e.target.value; setNewOrder(p => ({...p, trackingNumber: val, courier: autoDetectCourier(val)})); };
     const toggleSelection = (id) => { const newSet = new Set(selectedOrders); newSet.has(id) ? newSet.delete(id) : newSet.add(id); setSelectedOrders(newSet); };
     const toggleSelectAll = () => { const newSet = new Set(); if (selectedOrders.size !== orders.length) orders.forEach(o => newSet.add(o.id)); setSelectedOrders(newSet); };
     
-    // --- [修复] 强化版复制功能 (去除弹窗，仅保留静默复制尝试) ---
     const copyToClipboard = async (text) => {
-        // 1. 尝试使用 Clipboard API (现代浏览器/HTTPS)
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            try {
-                await navigator.clipboard.writeText(text);
-                showToast("复制成功");
-                return;
-            } catch (err) {
-                console.warn("Clipboard API 失败:", err);
-            }
-        }
-        
-        // 2. 尝试使用 execCommand (旧版兼容/非HTTPS环境)
+        if (navigator.clipboard && navigator.clipboard.writeText) { try { await navigator.clipboard.writeText(text); showToast("复制成功"); return; } catch (err) { console.warn("Clipboard API 失败:", err); } }
         try {
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            
-            // 关键属性设置，防止页面跳动和缩放
-            textArea.contentEditable = "true";
-            textArea.readOnly = false;
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            textArea.style.top = "0";
-            textArea.style.opacity = "0";
-            textArea.style.fontSize = "16px"; // 防止 iOS 缩放
-
-            document.body.appendChild(textArea);
-            
-            textArea.focus();
-            textArea.select();
-            
-            // iOS 选中兼容
-            const range = document.createRange();
-            range.selectNodeContents(textArea);
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
-            textArea.setSelectionRange(0, 999999);
-
-            const successful = document.execCommand('copy');
-            document.body.removeChild(textArea);
-            
-            if (successful) {
-                showToast("复制成功");
-            } else {
-                // 仅提示错误，不再弹窗
-                showToast("复制受限，请长按话术手动复制", "error");
-            }
-        } catch (err) {
-            console.error("复制失败:", err);
-            showToast("复制受限，请长按话术手动复制", "error");
-        }
+            const textArea = document.createElement("textarea"); textArea.value = text; textArea.contentEditable = "true"; textArea.readOnly = false; textArea.style.position = "fixed"; textArea.style.left = "-9999px"; textArea.style.top = "0"; textArea.style.opacity = "0"; textArea.style.fontSize = "16px";
+            document.body.appendChild(textArea); textArea.focus(); textArea.select();
+            const range = document.createRange(); range.selectNodeContents(textArea); const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range); textArea.setSelectionRange(0, 999999);
+            const successful = document.execCommand('copy'); document.body.removeChild(textArea);
+            if (successful) showToast("复制成功"); else showToast("复制受限，请长按话术手动复制", "error");
+        } catch (err) { console.error("复制失败:", err); showToast("复制受限，请长按话术手动复制", "error"); }
     };
     
-    const handleAdminLogin = async (e) => { 
-        e.preventDefault(); 
-        if (!adminUsername || !adminPassword) { showToast("请输入账号和密码", "error"); return; } 
-        try {
-            await DataService.login(adminUsername, adminPassword);
-            setAdminUsername(''); setAdminPassword(''); 
-            showToast("管理员登录成功"); 
-        } catch (e) {
-            showToast("登录失败: " + String(e.message), "error");
-        }
-    };
-    
+    const handleAdminLogin = async (e) => { e.preventDefault(); if (!adminUsername || !adminPassword) { showToast("请输入账号和密码", "error"); return; } try { await DataService.login(adminUsername, adminPassword); setAdminUsername(''); setAdminPassword(''); showToast("管理员登录成功"); } catch (e) { showToast("登录失败: " + String(e.message), "error"); } };
     const handleAdminLogout = async () => { await DataService.logout(); };
     const handleSecretEntry = () => { setSecretClickCount(prev => { const newCount = prev + 1; if (newCount >= 5) { setCurrentView(isAdmin ? 'admin' : 'login'); return 0; } return newCount; }); if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current); clickTimeoutRef.current = setTimeout(() => { setSecretClickCount(0); }, 2000); };
     
@@ -1243,9 +869,7 @@ export default function App() {
             const results = await DataService.searchPublic(q);
             setSearchResult(results.length > 0 ? results : null);
             if (results.length > 0) { setExpandedOrderId(results[0].id); fetchLogistics(results[0]); }
-        } catch (e) {
-            showToast("查询出错: " + String(e.message), "error");
-        }
+        } catch (e) { showToast("查询出错: " + String(e.message), "error"); }
     }, [searchQuery]);
 
     const fetchLogistics = async (order) => {
@@ -1253,197 +877,67 @@ export default function App() {
         setLogisticsDataCache(prev => ({ ...prev, [order.id]: { loading: true, data: null, error: null } }));
         try {
             let courierCode = COURIER_CODE_MAP[order.courier];
-            if (!courierCode && order.courier !== '通用快递') { 
-                const mapKey = Object.keys(COURIER_CODE_MAP).find(k => order.courier.includes(k) || k.includes(order.courier)); 
-                if (mapKey) courierCode = COURIER_CODE_MAP[mapKey]; 
-            }
-            if (!courierCode && order.courier !== '通用快递') { throw new Error(`未找到快递代码: ${order.courier}`); }
+            if (!courierCode && order.courier !== '通用快递') { const mapKey = Object.keys(COURIER_CODE_MAP).find(k => order.courier.includes(k) || k.includes(order.courier)); if (mapKey) courierCode = COURIER_CODE_MAP[mapKey]; }
+            if (!courierCode && order.courier !== '通用快递') throw new Error(`未找到快递代码: ${order.courier}`);
             const result = await DataService.queryLogisticsFromEdge(order.trackingNumber, courierCode, order.phone);
-            const isSuccess = 
-                (result.code == 200) || 
-                (result.success === true) || 
-                (result.Success === true) || 
-                (String(result.status) === "0") || 
-                (String(result.status) === "200") ||
-                (Array.isArray(result.data) && result.data.length > 0) || 
-                (Array.isArray(result.list) && result.list.length > 0) || 
-                (Array.isArray(result.traces) && result.traces.length > 0) ||
-                (Array.isArray(result.Traces) && result.Traces.length > 0);
+            const isSuccess = (result.code == 200) || (result.success === true) || (result.Success === true) || (String(result.status) === "0") || (String(result.status) === "200") || (Array.isArray(result.data) && result.data.length > 0) || (Array.isArray(result.list) && result.list.length > 0) || (Array.isArray(result.traces) && result.traces.length > 0) || (Array.isArray(result.Traces) && result.Traces.length > 0);
             if (isSuccess) { 
                 let rawList = result.data || result.list || result.traces || result.Traces || result.logisticsTraceDetailList || [];
-                if (!Array.isArray(rawList) && typeof rawList === 'object') { rawList = rawList.list || rawList.traces || rawList.Traces || []; }
-                if (!Array.isArray(rawList) || rawList.length === 0) { rawList = [{ time: Date.now(), status: "暂无详细轨迹，请稍后再试" }]; }
+                if (!Array.isArray(rawList) && typeof rawList === 'object') rawList = rawList.list || rawList.traces || rawList.Traces || [];
+                if (!Array.isArray(rawList) || rawList.length === 0) rawList = [{ time: Date.now(), status: "暂无详细轨迹，请稍后再试" }];
                 const list = rawList.map(item => ({ time: item.time || item.ftime || item.AcceptTime || item.time_stamp || Date.now(), status: item.status || item.context || item.desc || item.AcceptStation || "未知状态" }));
                 setLogisticsDataCache(prev => ({ ...prev, [order.id]: { loading: false, data: list, error: null } }));
-            } else { 
-                const debugMsg = JSON.stringify(result).slice(0, 200); 
-                throw new Error(result.msg || result.reason || result.error || `API返回格式异常: ${debugMsg}`); 
-            }
+            } else { const debugMsg = JSON.stringify(result).slice(0, 200); throw new Error(result.msg || result.reason || result.error || `API返回格式异常: ${debugMsg}`); }
         } catch (error) {
-            const message = error.message; 
-            const isNetworkError = message === 'Failed to fetch' || message.includes('NetworkError'); 
-            const displayMsg = isNetworkError ? "网络请求失败" : message; 
-            const mockData = isNetworkError || message.includes("AppCode") || message.includes("HTTP") ? [] : getMockLogisticsData(order.trackingNumber, order.courier, displayMsg);
+            const message = error.message; const isNetworkError = message === 'Failed to fetch' || message.includes('NetworkError'); const displayMsg = isNetworkError ? "网络请求失败" : message; const mockData = isNetworkError || message.includes("AppCode") || message.includes("HTTP") ? [] : getMockLogisticsData(order.trackingNumber, order.courier, displayMsg);
             setLogisticsDataCache(prev => ({ ...prev, [order.id]: { loading: false, data: mockData, error: displayMsg } }));
-            if (isNetworkError) { showToast(displayMsg, "error"); }
+            if (isNetworkError) showToast(displayMsg, "error");
         }
     };
     
-    // --- 异步生成短链并复制 ---
     const handleQuickCopyReply = (order) => { 
         showToast("正在生成短链并复制...", "success");
-
         const createMessageTask = async () => {
-            let realTimeStatus = order.lastApiStatus; 
-            const cache = logisticsDataCache[order.id]; 
-            if (cache && cache.data && Array.isArray(cache.data) && cache.data.length > 0) { 
-                const validData = cache.data.filter(item => item && (item.time || item.ftime)); 
-                const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); 
-                if (sortedData.length > 0) { realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; } 
-            } 
+            let realTimeStatus = order.lastApiStatus; const cache = logisticsDataCache[order.id]; if (cache && cache.data && Array.isArray(cache.data) && cache.data.length > 0) { const validData = cache.data.filter(item => item && (item.time || item.ftime)); const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); if (sortedData.length > 0) realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; } 
             const statusSimple = getSimplifiedStatus(realTimeStatus); 
-            
-            let queryValue = order.trackingNumber.trim();
-            let queryLink;
-            try {
-                const shortCode = await DataService.getOrCreateShortLink(queryValue);
-                // [修复] 确保话术中的链接也使用 dhcx.me
-                queryLink = `${SHORT_LINK_BASE_URL}/${shortCode}`.replace('https://', '').replace('http://', ''); 
-            } catch (e) {
-                console.warn("短链生成失败:", e.message);
-                const safeToken = encodeToken(queryValue);
-                // 降级使用长链格式，域名保持不变
-                queryLink = `${SHORT_LINK_BASE_URL}?q=${safeToken}`.replace('https://', '').replace('http://', ''); 
-            }
-
-            let templateKey = 'TRANSPORT'; 
-            if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; 
-            else if (statusSimple === '派件中') templateKey = 'DELIVERING'; 
-            else if (statusSimple === '已签收') templateKey = 'SIGN'; 
-            else if (statusSimple === '异常件') templateKey = 'ABNORMAL'; 
-            
-            let message = DEFAULT_TEMPLATES[templateKey]; 
-            message = message.replace(/{name}/g, order.recipientName || '客户')
-                             .replace(/{product}/g, order.product || '商品')
-                             .replace(/{courier}/g, order.courier)
-                             .replace(/{no}/g, order.trackingNumber)
-                             .replace(/{link}/g, queryLink)
-                             .replace(/{status}/g, realTimeStatus || statusSimple);
+            let queryValue = order.trackingNumber.trim(); let queryLink;
+            try { const shortCode = await DataService.getOrCreateShortLink(queryValue); queryLink = `${SHORT_LINK_BASE_URL}/${shortCode}`.replace('https://', '').replace('http://', ''); } catch (e) { console.warn("短链生成失败:", e.message); const safeToken = encodeToken(queryValue); queryLink = `${SHORT_LINK_BASE_URL}?q=${safeToken}`.replace('https://', '').replace('http://', ''); }
+            let templateKey = 'TRANSPORT'; if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; else if (statusSimple === '派件中') templateKey = 'DELIVERING'; else if (statusSimple === '已签收') templateKey = 'SIGN'; else if (statusSimple === '异常件') templateKey = 'ABNORMAL'; 
+            let message = DEFAULT_TEMPLATES[templateKey]; message = message.replace(/{name}/g, order.recipientName || '客户').replace(/{product}/g, order.product || '商品').replace(/{courier}/g, order.courier).replace(/{no}/g, order.trackingNumber).replace(/{link}/g, queryLink).replace(/{status}/g, realTimeStatus || statusSimple);
             return message;
         };
-
         if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
-            try {
-                const textBlobPromise = createMessageTask().then(text => new Blob([text], { type: 'text/plain' }));
-                const item = new ClipboardItem({ 'text/plain': textBlobPromise });
-                
-                navigator.clipboard.write([item]).then(() => {
-                    showToast("复制成功");
-                    if (navigator.vibrate) navigator.vibrate(200);
-                }).catch(err => {
-                    console.warn("ClipboardItem 写入被拦截，尝试降级:", err);
-                    createMessageTask().then(text => copyToClipboard(text));
-                });
-                return; 
-            } catch (e) {
-                console.warn("ClipboardItem 初始化失败:", e);
-            }
+            try { const textBlobPromise = createMessageTask().then(text => new Blob([text], { type: 'text/plain' })); const item = new ClipboardItem({ 'text/plain': textBlobPromise }); navigator.clipboard.write([item]).then(() => { showToast("复制成功"); if (navigator.vibrate) navigator.vibrate(200); }).catch(err => { createMessageTask().then(text => copyToClipboard(text)); }); return; } catch (e) {}
         }
-
-        createMessageTask().then(text => {
-            copyToClipboard(text);
-            if (navigator.vibrate) navigator.vibrate(200);
-        }).catch(err => {
-            console.error("生成失败:", err);
-            showToast("生成失败，请重试", "error");
-        });
+        createMessageTask().then(text => { copyToClipboard(text); if (navigator.vibrate) navigator.vibrate(200); }).catch(err => { console.error("生成失败:", err); showToast("生成失败，请重试", "error"); });
     };
 
-    // --- [修改] 使用在线 API 生成二维码 (修复链接和加载失败问题) ---
     const handleShowQrCode = async (order) => {
-        // [新增] 构造卡片信息
-        const info = {
-            name: order.recipientName,
-            product: order.product,
-            courier: order.courier, // [新增] 快递公司名称
-            trackingNumber: order.trackingNumber
-        };
-
-        // 先显示 Loading 状态
+        const info = { name: order.recipientName, product: order.product, courier: order.courier, trackingNumber: order.trackingNumber };
         setQrCodeModal({ show: true, url: '', title: `单号：${order.trackingNumber}`, info, loading: true });
-        
         try {
             let queryValue = order.trackingNumber.trim();
-            // 1. 获取短码 (保持原有逻辑)
             const shortCode = await DataService.getOrCreateShortLink(queryValue);
-            
-            // 2. [修复] 构造跳转链接 (使用 SHORT_LINK_BASE_URL 固定的 dhcx.me 域名)
             const jumpUrl = `${SHORT_LINK_BASE_URL}/${shortCode}`;
-            
-            // 3. 构造显示的短文本 (显示为 dhcx.me/xxxx)
             const displayText = `${SHORT_LINK_BASE_URL.replace('https://', '')}/${shortCode}`;
-
-            // 4. [修改] 对接免费 API 生成二维码
-            // 使用 api.qrserver.com 服务
             const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(jumpUrl)}&bgcolor=ffffff&color=000000&margin=10`;
-            
-            // 图片预加载，确保显示时已有图片
-            const img = new Image();
-            img.crossOrigin = "Anonymous"; // 允许跨域，方便 html2canvas 截图
-            img.onload = () => {
-                setQrCodeModal({ 
-                    show: true, 
-                    url: apiUrl, 
-                    title: displayText, 
-                    info, 
-                    loading: false 
-                });
-                
-                // [修改] 移除自动截图逻辑
-            };
-            img.onerror = () => {
-                 // Fallback if API fails (rare, but good practice)
-                 setQrCodeModal({ show: false, url: '', title: '', info: null, loading: false });
-                 showToast("二维码生成服务繁忙", "error");
-            };
-            img.src = apiUrl;
-
-        } catch (e) {
-            console.error("二维码生成失败", e);
-            showToast("生成失败: " + e.message, "error");
-            setQrCodeModal({ show: false, url: '', title: '', info: null, loading: false });
-        }
+            const img = new Image(); img.crossOrigin = "Anonymous"; img.onload = () => { setQrCodeModal({ show: true, url: apiUrl, title: displayText, info, loading: false }); }; img.onerror = () => { setQrCodeModal({ show: false, url: '', title: '', info: null, loading: false }); showToast("二维码生成服务繁忙", "error"); }; img.src = apiUrl;
+        } catch (e) { console.error("二维码生成失败", e); showToast("生成失败: " + e.message, "error"); setQrCodeModal({ show: false, url: '', title: '', info: null, loading: false }); }
     };
 
     const handleShowLogistics = (order) => { setViewingLogisticsOrder(order); fetchLogistics(order); };
-
-    // --- [新增] AI 分析处理器 ---
     const handleAIAnalysis = async (order) => {
         setAiModal({ show: true, order, analysis: null, loading: true });
-        
-        // 确保有物流数据
-        let tracks = logisticsDataCache[order.id]?.data;
-        if (!tracks) {
-            // 如果缓存没有，尝试获取一次（虽然UI逻辑上一般是先查看物流再AI，但防呆）
-             try {
-                // 复用 fetchLogistics 逻辑有点麻烦，这里直接模拟或提示
-                // 为了简化，我们假设用户只有在有物流数据时才点这个
-                tracks = []; 
-             } catch(e) {}
-        }
-        
+        let tracks = logisticsDataCache[order.id]?.data; if (!tracks) try { tracks = []; } catch(e) {}
         const result = await AI_BRAIN.analyze(order, tracks);
         setAiModal({ show: true, order, analysis: result, loading: false });
     };
     
-    // ... (Render logic below) ...
-
+    // ... (Render logic) ...
     if (currentView === 'login') {
         return (
             <div className="min-h-screen min-h-[100dvh] flex flex-col items-center justify-center bg-black text-white p-6 relative overflow-hidden">
-                <AcidBackground themeColor={apiSettings.themeColor} mode={activeBackgroundMode} lowPowerMode={lowPowerMode} /><NoiseOverlay />
-                <ClickEffects themeColor={apiSettings.themeColor} />
-                {toast && <Toast message={toast.message} type={toast.type} />}
+                <AcidBackground themeColor={apiSettings.themeColor} mode={activeBackgroundMode} lowPowerMode={lowPowerMode} /><NoiseOverlay /><ClickEffects themeColor={apiSettings.themeColor} />{toast && <Toast message={toast.message} type={toast.type} />}
                 <TiltCard className="w-full max-w-sm bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 p-8 text-center shadow-2xl relative z-10">
                     <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 border-2 shadow-[0_0_20px_currentColor]" style={{ borderColor: apiSettings.themeColor, color: apiSettings.themeColor }}><Lock size={32} className="animate-pulse"/></div>
                     <h2 className="text-3xl font-black text-white mb-2 tracking-tighter">管理员入口</h2>
@@ -1461,28 +955,13 @@ export default function App() {
     if (currentView === 'admin' && isAdmin) {
         return (
             <div className="min-h-screen min-h-[100dvh] bg-[#050505] text-white font-sans flex flex-col md:flex-row relative overflow-hidden">
-                {/* ... (Backgrounds and Toast) ... */}
-                <NoiseOverlay />
-                <ClickEffects themeColor={apiSettings.themeColor} />
-                {toast && <Toast message={toast.message} type={toast.type} />}
-                
-                {/* AI Modal */}
-                <AIAnalysisModal 
-                    show={aiModal.show} 
-                    onClose={() => setAiModal({ ...aiModal, show: false })} 
-                    order={aiModal.order} 
-                    analysis={aiModal.analysis} 
-                    loading={aiModal.loading}
-                    themeColor={apiSettings.themeColor}
-                />
-
+                <NoiseOverlay /><ClickEffects themeColor={apiSettings.themeColor} />{toast && <Toast message={toast.message} type={toast.type} />}
+                <AIAnalysisModal show={aiModal.show} onClose={() => setAiModal({ ...aiModal, show: false })} order={aiModal.order} analysis={aiModal.analysis} loading={aiModal.loading} themeColor={apiSettings.themeColor} />
                 <div className="hidden md:flex w-64 bg-black/50 backdrop-blur-xl border-r border-white/5 flex-col z-10">
                     <div className="h-20 flex items-center px-6 border-b border-white/5 gap-3"><div className="w-8 h-8 rounded flex items-center justify-center text-black font-bold" style={{ backgroundColor: apiSettings.themeColor }}><Package size={18}/></div><span className="font-black tracking-tighter text-lg">后台管理</span></div>
                     <nav className="flex-1 p-4 space-y-2">{[['dashboard','数据统计',BarChart2], ['list','订单管理',List], ['settings','系统设置',Settings]].map(([key, label, Icon]) => (<button key={key} onClick={() => { setAdminViewMode(key); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all ${adminViewMode===key ? 'bg-white/10 text-white border border-white/10' : 'text-white/40 hover:text-white hover:bg-white/5'}`}><Icon size={18} style={{ color: adminViewMode===key ? apiSettings.themeColor : 'currentColor' }}/> {label}</button>))}</nav>
                     <div className="p-4 border-t border-white/5 space-y-2"><button onClick={() => { setCurrentView('search'); }} className="w-full flex items-center gap-2 px-4 py-2 text-white/40 hover:text-white text-sm"><Home size={14}/> 预览前台</button><button onClick={handleAdminLogout} className="w-full flex items-center gap-2 px-4 py-2 text-white/40 hover:text-red-500 text-sm"><LogOut size={14}/> 退出登录</button></div>
                 </div>
-
-                {/* ... (Main Content Area) ... */}
                 <div className="flex-1 flex flex-col h-screen h-[100dvh] overflow-hidden z-10 relative">
                     <div className="md:hidden h-14 bg-black/80 backdrop-blur-md border-b border-white/10 flex justify-between items-center px-4 shrink-0 safe-top">
                         <span className="font-black text-white text-lg">管理面板</span>
@@ -1494,119 +973,63 @@ export default function App() {
                         </div>
                     </div>
                     <div className="flex-1 overflow-auto p-4 md:p-8 custom-scrollbar pb-40 md:pb-8">
-                        {/* ... (Dashboard View omitted for brevity, it's unchanged) ... */}
                         {adminViewMode === 'dashboard' && (
                             <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 animate-in fade-in duration-500">
-                                {/* ... (Same content as before) ... */}
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                                     {[ { label: 'PV', val: visitStats.pv, icon: Activity, color: 'text-purple-400', bg: 'bg-purple-400/10' }, { label: 'UV', val: visitStats.uv, icon: Globe, color: 'text-green-400', bg: 'bg-green-400/10' }, { label: '订单', val: statusCounts.total, icon: Package, color: 'text-blue-400', bg: 'bg-blue-400/10' }, { label: '异常', val: statusCounts['异常件'], icon: AlertTriangle, color: 'text-[#FF0055]', bg: 'bg-[#FF0055]/10' } ].map((stat, i) => ( <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-xl backdrop-blur-sm flex items-center justify-between group hover:bg-white/10 transition-colors"> <div> <div className="text-white/40 text-[10px] font-mono uppercase tracking-wider mb-1">{stat.label}</div> <div className="text-2xl font-black text-white">{stat.val}</div> </div> <div className={`w-8 h-8 rounded-full flex items-center justify-center ${stat.bg} ${stat.color}`}><stat.icon size={16} /></div> </div> ))}
                                 </div>
-                                {/* ... (Rest of dashboard) ... */}
                             </div>
                         )}
-
                         {adminViewMode === 'list' && (
                             <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 animate-in fade-in duration-500">
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/5 p-4 md:p-6 rounded-2xl border border-white/5 backdrop-blur-sm sticky top-0 z-20">
                                     <div className="flex justify-between w-full md:w-auto items-center"> 
-                                        <div className="flex items-center gap-3"> 
-                                            <div><h2 className="text-2xl md:text-3xl font-black text-white tracking-tight mb-1">订单管理</h2><p className="text-[10px] font-mono text-white/40 uppercase tracking-widest">共 {totalOrdersCount} 条记录</p></div> 
-                                            <button onClick={() => setIsAdminMasked(!isAdminMasked)} className="text-white/30 hover:text-white transition-colors p-3 rounded-full hover:bg-white/10 active:bg-white/20 active:scale-95" title={isAdminMasked ? "点击显示敏感信息" : "点击隐藏敏感信息"}> {isAdminMasked ? <Eye size={24}/> : <EyeOff size={24}/>} </button> 
-                                        </div> 
+                                        <div className="flex items-center gap-3"> <div><h2 className="text-2xl md:text-3xl font-black text-white tracking-tight mb-1">订单管理</h2><p className="text-[10px] font-mono text-white/40 uppercase tracking-widest">共 {totalOrdersCount} 条记录</p></div> <button onClick={() => setIsAdminMasked(!isAdminMasked)} className="text-white/30 hover:text-white transition-colors p-3 rounded-full hover:bg-white/10 active:bg-white/20 active:scale-95"> {isAdminMasked ? <Eye size={24}/> : <EyeOff size={24}/>} </button> </div> 
                                         <button onClick={() => setShowImportModal(true)} className="md:hidden w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><Plus size={18}/></button> 
                                     </div>
                                     <div className="flex flex-col gap-3 w-full md:w-auto"> 
                                         <div className="flex gap-2 w-full md:w-auto"> 
-                                            {/* ... (Search & Import buttons) ... */}
-                                            <div className="relative flex-1 md:w-48">
-                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} />
-                                                <input type="text" placeholder="搜索..." value={adminSearchQuery} onChange={(e) => setAdminSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/30 text-white placeholder-white/20 transition-all"/>
-                                            </div> 
+                                            <div className="relative flex-1 md:w-48"> <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} /> <input type="text" placeholder="搜索..." value={adminSearchQuery} onChange={(e) => setAdminSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-black border border-white/10 rounded-lg text-sm outline-none focus:border-white/30 text-white placeholder-white/20 transition-all"/> </div> 
                                             <button onClick={handleDeduplicate} disabled={isDeduplicating} className="hidden md:flex px-4 py-2.5 bg-white/5 border border-white/10 text-white/70 hover:text-white rounded-lg text-xs font-bold hover:bg-white/10 items-center gap-2 shrink-0 disabled:opacity-50 transition-all">{isDeduplicating ? <RefreshCw size={14} className="animate-spin"/> : <Filter size={14} />} {isDeduplicating ? "处理中" : "去重"}</button>
                                             <button onClick={() => setShowImportModal(true)} className="hidden md:flex px-4 py-2.5 text-black rounded-lg text-xs font-bold hover:opacity-80 items-center gap-2 shrink-0" style={{ backgroundColor: apiSettings.themeColor }}><Upload size={14} /> 导入</button> 
                                             {selectedOrders.size > 0 && (<button onClick={handleBatchDeleteClick} className="px-3 py-2.5 bg-red-900/50 text-red-400 border border-red-900 rounded-lg text-xs font-bold hover:bg-red-900/80"><Trash2 size={14}/></button>)} 
                                         </div> 
                                     </div>
                                 </div>
-                                {/* ... (Table View) ... */}
                                 <div className="hidden md:block bg-white/5 rounded-2xl border border-white/5 overflow-hidden backdrop-blur-sm">
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left border-collapse">
-                                            {/* ... (Table Header) ... */}
-                                            <thead>
-                                                <tr className="bg-black/40 text-[10px] font-mono uppercase tracking-wider text-white/30 border-b border-white/5">
-                                                    <th className="p-4 w-10 text-center"><button onClick={toggleSelectAll}><CheckSquare size={16}/></button></th>
-                                                    <th className="p-4">客户信息</th>
-                                                    <th className="p-4">商品 / 快递</th>
-                                                    <th className="p-4">单号</th>
-                                                    <th className="p-4 text-center">操作</th>
-                                                </tr>
-                                            </thead>
+                                            <thead><tr className="bg-black/40 text-[10px] font-mono uppercase tracking-wider text-white/30 border-b border-white/5"><th className="p-4 w-10 text-center"><button onClick={toggleSelectAll}><CheckSquare size={16}/></button></th><th className="p-4">客户信息</th><th className="p-4">商品 / 快递</th><th className="p-4">单号</th><th className="p-4 text-center">操作</th></tr></thead>
                                             <tbody className="text-sm text-white/80">
                                             {orders.map(order => (
                                                 <tr key={order.id} className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors ${selectedOrders.has(order.id) ? 'bg-white/[0.05]' : ''}`}>
-                                                    {/* ... (Other columns) ... */}
-                                                    <td className="p-4 text-center">
-                                                        <button onClick={() => toggleSelection(order.id)} className={selectedOrders.has(order.id) ? 'text-[#CCFF00]' : 'text-white/20'}>
-                                                            {selectedOrders.has(order.id)?<CheckSquare size={18}/>:<Square size={18}/>}
-                                                        </button>
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <div className="font-bold text-white">
-                                                            {isAdminMasked ? (order.recipientName?.[0] + '*'.repeat(Math.max(0, (order.recipientName?.length || 0) - 1))) : order.recipientName}
-                                                        </div>
-                                                        <div className="text-xs text-white/40 font-mono mt-0.5">
-                                                            {isAdminMasked && order.phone && order.phone.length > 7 ? order.phone.replace(/(\d{3})\d+(\d{4})/, '$1****$2') : order.phone}
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <div onClick={() => handleEditOrderClick(order)} className="max-w-[180px] line-clamp-1 text-white/70 text-xs cursor-pointer hover:text-white hover:underline decoration-dashed decoration-white/30">{order.product}</div>
-                                                        <div className="text-[10px] text-white/30 mt-1">{order.courier}</div>
-                                                    </td>
-                                                    <td className="p-4">
-                                                        <div className="font-mono text-[10px] text-white/30 select-all">
-                                                            {isAdminMasked && order.trackingNumber ? order.trackingNumber.slice(0,5) + '******' + order.trackingNumber.slice(-4) : order.trackingNumber}
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-4 text-center">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                            <button onClick={() => handleShowLogistics(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg" title="手动查询"><MapPin size={14}/></button>
-                                                            {/* [新增] AI 分析按钮 */}
-                                                            <button onClick={() => handleAIAnalysis(order)} className="p-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-lg" title="AI 智能分析"><SparklesIcon size={14}/></button>
-                                                            <button onClick={() => handleQuickCopyReply(order)} className="p-2 bg-white/5 hover:bg-white/10 text-[#CCFF00] rounded-lg"><MessageSquare size={14}/></button>
-                                                            {/* [新增] PC端列表二维码按钮 */}
-                                                            <button onClick={() => handleShowQrCode(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg"><QrCode size={14}/></button>
-                                                            <button onClick={() => handleEditOrderClick(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg"><Edit size={14}/></button>
-                                                            <button onClick={() => handleDeleteOrderClick(order.id)} className="p-2 bg-white/5 hover:bg-white/10 text-red-500 rounded-lg"><Trash2 size={14}/></button>
-                                                        </div>
-                                                    </td>
+                                                    <td className="p-4 text-center"><button onClick={() => toggleSelection(order.id)} className={selectedOrders.has(order.id) ? 'text-[#CCFF00]' : 'text-white/20'}>{selectedOrders.has(order.id)?<CheckSquare size={18}/>:<Square size={18}/>}</button></td>
+                                                    <td className="p-4"><div className="font-bold text-white">{isAdminMasked ? (order.recipientName?.[0] + '*'.repeat(Math.max(0, (order.recipientName?.length || 0) - 1))) : order.recipientName}</div><div className="text-xs text-white/40 font-mono mt-0.5">{isAdminMasked && order.phone && order.phone.length > 7 ? order.phone.replace(/(\d{3})\d+(\d{4})/, '$1****$2') : order.phone}</div></td>
+                                                    <td className="p-4"><div onClick={() => handleEditOrderClick(order)} className="max-w-[180px] line-clamp-1 text-white/70 text-xs cursor-pointer hover:text-white hover:underline decoration-dashed decoration-white/30">{order.product}</div><div className="text-[10px] text-white/30 mt-1">{order.courier}</div></td>
+                                                    <td className="p-4"><div className="font-mono text-[10px] text-white/30 select-all">{isAdminMasked && order.trackingNumber ? order.trackingNumber.slice(0,5) + '******' + order.trackingNumber.slice(-4) : order.trackingNumber}</div></td>
+                                                    <td className="p-4 text-center"><div className="flex items-center justify-center gap-2">
+                                                        <button onClick={() => handleShowLogistics(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg" title="手动查询"><MapPin size={14}/></button>
+                                                        <button onClick={() => handleAIAnalysis(order)} className="p-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-lg" title="AI 智能分析"><SparklesIcon size={14}/></button>
+                                                        <button onClick={() => handleQuickCopyReply(order)} className="p-2 bg-white/5 hover:bg-white/10 text-[#CCFF00] rounded-lg"><MessageSquare size={14}/></button>
+                                                        <button onClick={() => handleShowQrCode(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg"><QrCode size={14}/></button>
+                                                        <button onClick={() => handleEditOrderClick(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg"><Edit size={14}/></button>
+                                                        <button onClick={() => handleDeleteOrderClick(order.id)} className="p-2 bg-white/5 hover:bg-white/10 text-red-500 rounded-lg"><Trash2 size={14}/></button>
+                                                    </div></td>
                                                 </tr>
                                             ))}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
-                                {/* ... (Mobile Card View) ... */}
                                 <div className="md:hidden space-y-3">
                                     {orders.map(order => (
                                         <div key={order.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col gap-3">
                                             <div className="flex justify-between items-start">
-                                                {/* ... (Card content) ... */}
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                         <div className="text-white font-bold">{isAdminMasked ? (order.recipientName?.[0] + '*'.repeat(Math.max(0, (order.recipientName?.length || 0) - 1))) : order.recipientName}</div>
-                                                         <div className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.bg} ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.color}`}>{getSimplifiedStatus(order.lastApiStatus)}</div>
-                                                    </div>
-                                                    <div onClick={() => handleEditOrderClick(order)} className="text-xs text-white/40 mt-1 cursor-pointer hover:text-white">{order.product}</div>
-                                                </div>
-                                                <div className="text-right">
-                                                     <div className="text-xs font-mono text-white/60">{isAdminMasked && order.trackingNumber ? order.trackingNumber.slice(0,5) + '******' + order.trackingNumber.slice(-4) : order.trackingNumber}</div>
-                                                     <div className="text-[10px] text-white/30 mt-1">{order.courier}</div>
-                                                </div>
+                                                <div><div className="flex items-center gap-2"><div className="text-white font-bold">{isAdminMasked ? (order.recipientName?.[0] + '*'.repeat(Math.max(0, (order.recipientName?.length || 0) - 1))) : order.recipientName}</div><div className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.bg} ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.color}`}>{getSimplifiedStatus(order.lastApiStatus)}</div></div><div onClick={() => handleEditOrderClick(order)} className="text-xs text-white/40 mt-1 cursor-pointer hover:text-white">{order.product}</div></div>
+                                                <div className="text-right"><div className="text-xs font-mono text-white/60">{isAdminMasked && order.trackingNumber ? order.trackingNumber.slice(0,5) + '******' + order.trackingNumber.slice(-4) : order.trackingNumber}</div><div className="text-[10px] text-white/30 mt-1">{order.courier}</div></div>
                                             </div>
                                             <div className="grid grid-cols-6 gap-2 border-t border-white/5 pt-3 mt-1">
                                                 <button onClick={() => handleShowLogistics(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10"><MapPin size={16}/> <span className="text-[10px]">轨迹</span></button>
-                                                {/* [新增] 移动端 AI 按钮 */}
                                                 <button onClick={() => handleAIAnalysis(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"><SparklesIcon size={16}/> <span className="text-[10px]">AI</span></button>
                                                 <button onClick={() => handleQuickCopyReply(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-[#CCFF00] hover:bg-white/10"><MessageSquare size={16}/> <span className="text-[10px]">话术</span></button>
                                                 <button onClick={() => handleShowQrCode(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10"><QrCode size={16}/> <span className="text-[10px]">扫码</span></button>
@@ -1616,34 +1039,20 @@ export default function App() {
                                         </div>
                                     ))}
                                 </div>
-                                {/* ... (Pagination) ... */}
                                 <div className="p-4 border-t border-white/5 flex flex-col md:flex-row gap-4 justify-between items-center bg-black/20 rounded-xl">
-                                    <div className="flex items-center gap-4">
-                                        <span className="text-xs text-white/30 font-mono">第 {currentPage} 页 / 共 {totalPages} 页</span>
-                                        <select value={itemsPerPage} onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="bg-black/50 border border-white/10 text-white/60 text-xs rounded-lg px-2 py-1 outline-none focus:border-white/30 cursor-pointer hover:bg-white/5 transition-colors">
-                                            <option value={20}>20 条/页</option>
-                                            <option value={50}>50 条/页</option>
-                                            <option value={100}>100 条/页</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1 bg-white/5 border border-white/10 rounded text-xs disabled:opacity-30 hover:bg-white/10 text-white">上一页</button>
-                                        <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-3 py-1 bg-white/5 border border-white/10 rounded text-xs disabled:opacity-30 hover:bg-white/10 text-white">下一页</button>
-                                    </div>
+                                    <div className="flex items-center gap-4"><span className="text-xs text-white/30 font-mono">第 {currentPage} 页 / 共 {totalPages} 页</span><select value={itemsPerPage} onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="bg-black/50 border border-white/10 text-white/60 text-xs rounded-lg px-2 py-1 outline-none focus:border-white/30 cursor-pointer hover:bg-white/5 transition-colors"><option value={20}>20 条/页</option><option value={50}>50 条/页</option><option value={100}>100 条/页</option></select></div>
+                                    <div className="flex gap-2"><button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1 bg-white/5 border border-white/10 rounded text-xs disabled:opacity-30 hover:bg-white/10 text-white">上一页</button><button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-3 py-1 bg-white/5 border border-white/10 rounded text-xs disabled:opacity-30 hover:bg-white/10 text-white">下一页</button></div>
                                 </div>
                             </div>
                         )}
-                        {/* ... (Settings view) ... */}
                         {adminViewMode === 'settings' && (
                             <div className="max-w-2xl mx-auto animate-in fade-in duration-500">
-                                {/* ... (Settings content same as before) ... */}
                                 <div className="bg-[#111] border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
                                     <div className="px-8 py-6 border-b border-white/5 bg-white/[0.02]">
                                         <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-3"><Settings size={24} className="text-[#CCFF00]" /> 系统配置</h3>
                                         <p className="text-xs text-white/40 mt-1 font-mono">自定义您的品牌形象与站点内容</p>
                                     </div>
                                     <div className="p-6 md:p-8 space-y-8">
-                                        {/* ... (Branding) ... */}
                                         <section>
                                             <h4 className="text-xs font-bold text-white/40 uppercase mb-5 tracking-widest flex items-center gap-2"><ImageIcon size={14}/> 品牌识别</h4>
                                             <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -1656,37 +1065,26 @@ export default function App() {
                                                     <div className="text-[10px] text-white/30 font-mono">点击图片上传</div>
                                                 </div>
                                                 <div className="flex-1 w-full space-y-4">
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-white/60 mb-1.5 ml-1">网站标题</label>
-                                                        <div className="relative group"><input value={apiSettings.siteTitle} onChange={e => setApiSettings({...apiSettings, siteTitle: e.target.value})} className="w-full h-12 pl-4 pr-4 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:border-[#CCFF00]/50 focus:bg-black transition-all outline-none" placeholder="例如：内部单号查询"/><div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#CCFF00] transition-colors"><Type size={16}/></div></div>
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-white/60 mb-1.5 ml-1">Logo 链接 (可选)</label>
-                                                        <div className="flex gap-2"><input value={apiSettings.logoUrl && !apiSettings.logoUrl.startsWith('data:image/') ? apiSettings.logoUrl : ''} onChange={e => setApiSettings({...apiSettings, logoUrl: e.target.value})} placeholder="https://..." className="flex-1 h-10 pl-3 pr-3 bg-white/5 border border-white/10 rounded-lg text-xs text-white/80 focus:border-white/30 outline-none font-mono"/>{apiSettings.logoUrl && apiSettings.logoUrl.startsWith('data:image/') && (<button onClick={() => setApiSettings(p => ({...p, logoUrl: ''}))} className="px-3 h-10 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg border border-red-500/20 text-xs font-bold transition-colors">清除</button>)}</div>
-                                                    </div>
+                                                    <div><label className="block text-xs font-medium text-white/60 mb-1.5 ml-1">网站标题</label><div className="relative group"><input value={apiSettings.siteTitle} onChange={e => setApiSettings({...apiSettings, siteTitle: e.target.value})} className="w-full h-12 pl-4 pr-4 bg-white/5 border border-white/10 rounded-xl text-sm text-white focus:border-[#CCFF00]/50 focus:bg-black transition-all outline-none" placeholder="例如：内部单号查询"/><div className="absolute right-3 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-[#CCFF00] transition-colors"><Type size={16}/></div></div></div>
+                                                    <div><label className="block text-xs font-medium text-white/60 mb-1.5 ml-1">Logo 链接 (可选)</label><div className="flex gap-2"><input value={apiSettings.logoUrl && !apiSettings.logoUrl.startsWith('data:image/') ? apiSettings.logoUrl : ''} onChange={e => setApiSettings({...apiSettings, logoUrl: e.target.value})} placeholder="https://..." className="flex-1 h-10 pl-3 pr-3 bg-white/5 border border-white/10 rounded-lg text-xs text-white/80 focus:border-white/30 outline-none font-mono"/>{apiSettings.logoUrl && apiSettings.logoUrl.startsWith('data:image/') && (<button onClick={() => setApiSettings(p => ({...p, logoUrl: ''}))} className="px-3 h-10 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg border border-red-500/20 text-xs font-bold transition-colors">清除</button>)}</div></div>
                                                 </div>
                                             </div>
                                         </section>
                                         <div className="w-full h-px bg-white/5"></div>
-                                        {/* ... (Theme) ... */}
                                         <section>
                                             <h4 className="text-xs font-bold text-white/40 uppercase mb-5 tracking-widest flex items-center gap-2"><Palette size={14}/> 主题配色</h4>
                                             <div className="bg-white/5 rounded-2xl p-5 border border-white/5">
-                                                <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-                                                    {THEME_PRESETS.map((theme) => (<button key={theme.color} onClick={() => setApiSettings({...apiSettings, themeColor: theme.color})} className={`group relative w-12 h-12 rounded-xl transition-all duration-300 ${apiSettings.themeColor === theme.color ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-black' : 'hover:scale-105 opacity-70 hover:opacity-100'}`} style={{ backgroundColor: theme.color }} title={theme.name}>{apiSettings.themeColor === theme.color && (<div className="absolute inset-0 flex items-center justify-center animate-in zoom-in"><Check size={20} className="text-black/80 drop-shadow-sm" strokeWidth={3} /></div>)}</button>))}
-                                                </div>
+                                                <div className="flex flex-wrap gap-4 justify-center md:justify-start">{THEME_PRESETS.map((theme) => (<button key={theme.color} onClick={() => setApiSettings({...apiSettings, themeColor: theme.color})} className={`group relative w-12 h-12 rounded-xl transition-all duration-300 ${apiSettings.themeColor === theme.color ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-black' : 'hover:scale-105 opacity-70 hover:opacity-100'}`} style={{ backgroundColor: theme.color }} title={theme.name}>{apiSettings.themeColor === theme.color && (<div className="absolute inset-0 flex items-center justify-center animate-in zoom-in"><Check size={20} className="text-black/80 drop-shadow-sm" strokeWidth={3} /></div>)}</button>))}</div>
                                                 <div className="mt-4 text-center md:text-left"><span className="text-xs text-white/30 font-mono">当前选择: {THEME_PRESETS.find(t => t.color === apiSettings.themeColor)?.name || apiSettings.themeColor}</span></div>
                                             </div>
                                         </section>
                                         <div className="w-full h-px bg-white/5"></div>
-                                        {/* ... (Announcement) ... */}
                                         <section>
                                             <h4 className="text-xs font-bold text-white/40 uppercase mb-5 tracking-widest flex items-center gap-2"><MessageSquare size={14}/> 首页公告</h4>
                                             <div className="relative"><textarea value={apiSettings.announcement} onChange={e => setApiSettings({...apiSettings, announcement: e.target.value})} className="w-full h-32 p-4 bg-white/5 border border-white/10 rounded-xl text-sm text-white/90 leading-relaxed focus:border-[#CCFF00]/50 outline-none resize-none transition-all placeholder-white/20 custom-scrollbar" placeholder="在此输入公告内容，支持换行..."/><div className="absolute bottom-3 right-3 pointer-events-none"><Edit size={14} className="text-white/20"/></div></div>
                                         </section>
                                         <button onClick={saveApiSettings} disabled={isSaving} className="w-full py-4 rounded-xl font-black tracking-widest text-sm uppercase transition-all transform active:scale-[0.98] hover:brightness-110 flex items-center justify-center gap-2 shadow-lg" style={{ backgroundColor: apiSettings.themeColor, color: '#000' }}>{isSaving ? <RefreshCw size={18} className="animate-spin"/> : <Save size={18}/>}{isSaving ? "正在同步..." : "保存并发布"}</button>
                                         <div className="w-full h-px bg-white/5"></div>
-                                        {/* ... (Danger Zone) ... */}
                                         <section>
                                             <h4 className="text-xs font-bold text-red-500/50 uppercase mb-5 tracking-widest flex items-center gap-2"><AlertTriangle size={14}/> 危险区域</h4>
                                             <div className="bg-red-500/5 rounded-2xl p-5 border border-red-500/10">
@@ -1710,98 +1108,8 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* [修改] 二维码 Modal - 仿制 DHCX 白色卡片样式 (无截图功能) */}
-                {qrCodeModal.show && (
-                    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={() => setQrCodeModal({...qrCodeModal, show: false})}>
-                        <div 
-                            className="w-full max-w-[320px] relative overflow-hidden bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300" 
-                            onClick={e => e.stopPropagation()}
-                        >
-                            {/* 顶部装饰条 */}
-                            <div className="h-1.5 w-full" style={{ backgroundColor: apiSettings.themeColor }}></div>
+                <QrCodeModal show={qrCodeModal.show} onClose={() => setQrCodeModal({...qrCodeModal, show: false})} data={qrCodeModal} themeColor={apiSettings.themeColor} />
 
-                            <div className="p-6 pb-2 relative z-10">
-                                {/* Header */}
-                                <div className="flex justify-between items-start mb-8">
-                                    <div>
-                                        <h1 className="text-3xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-                                            DHCX<span style={{ color: apiSettings.themeColor }}>.ME</span>
-                                        </h1>
-                                        <p className="text-[9px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
-                                    </div>
-                                    
-                                    <div className="bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
-                                        <ShieldCheck size={10} className="opacity-70" />
-                                        <span className="text-[10px] font-bold tracking-wider">内部查询通道</span>
-                                    </div>
-                                </div>
-                                
-                                <div className="border-t-2 border-black mb-6"></div>
-                                
-                                <div className="space-y-6">
-                                    <div className="flex justify-between items-baseline">
-                                        <div>
-                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">RECEIVER / 收件人</div>
-                                            <div className="text-base font-bold text-black">{qrCodeModal.info?.name}</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">COURIER / 快递</div>
-                                            <div className="text-base font-black text-black font-mono">{qrCodeModal.info?.courier}</div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">ITEM / 商品</div>
-                                        <div className="text-sm font-bold text-black break-words leading-relaxed border-l-2 pl-3" style={{ borderColor: apiSettings.themeColor }}>
-                                            {qrCodeModal.info?.product}
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
-                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">TRACKING NO. / 单号</div>
-                                        <div className="font-mono text-xl font-black text-black tracking-tight break-all leading-none">
-                                            {qrCodeModal.info?.trackingNumber}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Cutout Divider */}
-                            <div className="relative w-full h-6 flex items-center justify-center mt-2">
-                                <div className="absolute left-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div> 
-                                <div className="absolute right-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div>
-                                <div className="w-full border-t border-dashed border-gray-300 mx-4"></div>
-                            </div>
-
-                            {/* Footer Section */}
-                            <div className="p-6 pt-2 bg-white flex flex-col items-center">
-                                <div className="flex gap-4 items-center w-full">
-                                    <div className="w-20 h-20 bg-white p-1 rounded-lg border border-black/5 shadow-sm shrink-0">
-                                        {qrCodeModal.loading ? (
-                                            <div className="w-full h-full flex items-center justify-center"><RefreshCw size={24} className="animate-spin text-black/20"/></div>
-                                        ) : (
-                                            <img src={qrCodeModal.url} alt="QR" className="w-full h-full object-contain mix-blend-multiply" crossOrigin="anonymous" />
-                                        )}
-                                    </div>
-                                    <div className="flex-1 flex flex-col justify-center h-20">
-                                        <div className="text-xs font-bold text-black mb-1">扫码实时追踪</div>
-                                        <div className="text-[10px] text-gray-400 leading-tight">请使用微信或浏览器扫码<br/>获取最新物流动态</div>
-                                        {/* Decorative bar */}
-                                        <div className="h-3 w-32 mt-2 opacity-20" style={{ backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2r9//38gYGAEESAAEGAAGRgE+bRsBPwAAAAASUVORK5CYII=")`, backgroundRepeat: 'repeat' }}></div>
-                                    </div>
-                                </div>
-                                
-                                <div className="mt-6 text-[9px] font-mono text-gray-300 w-full text-center">
-                                    ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
-                                </div>
-                            </div>
-                            
-                            <button onClick={() => setQrCodeModal({...qrCodeModal, show: false})} className="absolute top-4 right-4 z-20 text-gray-400 hover:text-black transition-colors"><X size={20}/></button>
-                        </div>
-                    </div>
-                )}
-
-                {/* ... (Other Modals) ... */}
                 {showImportModal && (
                     <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
                         <div className="bg-[#111] w-full max-w-lg rounded-2xl p-6 md:p-8 border border-white/10 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -1822,25 +1130,13 @@ export default function App() {
         );
     }
 
-    // ... (Public view renderer stays same, omitted for brevity) ...
+    // Public view
     return (
         <div className="w-full max-w-md mx-auto min-h-screen min-h-[100dvh] relative overflow-hidden flex flex-col">
-            {/* ... (Public view same as before) ... */}
-            <AcidBackground themeColor={apiSettings.themeColor} mode={activeBackgroundMode} lowPowerMode={lowPowerMode} /><NoiseOverlay />
-            <ClickEffects themeColor={apiSettings.themeColor} />
-            {toast && <Toast message={toast.message} type={toast.type} />}
-            
-            {/* [新增] 右上角功能区 - 低电量模式开关 */}
+            <AcidBackground themeColor={apiSettings.themeColor} mode={activeBackgroundMode} lowPowerMode={lowPowerMode} /><NoiseOverlay /><ClickEffects themeColor={apiSettings.themeColor} />{toast && <Toast message={toast.message} type={toast.type} />}
             <div className="absolute top-4 right-4 z-50 flex gap-3">
-                 <button 
-                    onClick={toggleLowPowerMode} 
-                    className={`p-2 rounded-full border backdrop-blur-md transition-all active:scale-95 ${lowPowerMode ? 'bg-[#CCFF00]/20 border-[#CCFF00] text-[#CCFF00]' : 'bg-white/5 border-white/10 text-white/30 hover:text-white'}`}
-                    title={lowPowerMode ? "点击开启特效" : "点击开启低电量模式"}
-                >
-                    {lowPowerMode ? <Battery size={18} className="animate-pulse" /> : <Zap size={18} />}
-                </button>
+                 <button onClick={toggleLowPowerMode} className={`p-2 rounded-full border backdrop-blur-md transition-all active:scale-95 ${lowPowerMode ? 'bg-[#CCFF00]/20 border-[#CCFF00] text-[#CCFF00]' : 'bg-white/5 border-white/10 text-white/30 hover:text-white'}`} title={lowPowerMode ? "点击开启特效" : "点击开启低电量模式"}> {lowPowerMode ? <Battery size={18} className="animate-pulse" /> : <Zap size={18} />} </button>
             </div>
-
             <div className="relative z-10 pt-12 pb-6 px-6 flex flex-col items-center">
                 <div className="absolute top-6 w-full flex justify-start px-6"> <span className="text-[10px] font-mono tracking-[0.2em] text-white/20 select-none cursor-default">{apiSettings.siteName}</span> </div>
                 <div className="relative group mb-6 mt-4"> <div className="absolute inset-0 rounded-full blur-md opacity-50" style={{ backgroundColor: apiSettings.themeColor }}></div> <button onClick={handleSecretEntry} className="w-24 h-24 rounded-full overflow-hidden border-2 relative z-10 bg-black active:scale-95 transition-transform duration-100" style={{ borderColor: apiSettings.themeColor, cursor: 'default' }} title="" > {apiSettings.logoUrl ? <img key={apiSettings.logoUrl} src={apiSettings.logoUrl} className="w-full h-full object-cover" onError={(e) => {e.target.onerror = null; e.target.style.display = 'none'; e.target.parentNode.classList.add('fallback-active');}} /> : <div className="w-full h-full flex items-center justify-center text-white font-black text-2xl italic">DHCX</div>} </button> </div>
@@ -1848,20 +1144,17 @@ export default function App() {
                 <TiltCard className="w-full relative z-20 group mt-8"><div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-1.5 flex gap-2 shadow-2xl"><form onSubmit={handleSearch} className="flex-1"><input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="请输入完整手机号或运单号" className="w-full h-12 pl-4 pr-4 bg-transparent text-white placeholder-white/30 font-mono text-sm outline-none" inputMode="text"/></form><button onClick={handleSearch} className="h-12 px-6 rounded-lg font-bold text-black hover:brightness-110 active:scale-95 transition-all" style={{ backgroundColor: apiSettings.themeColor }}>查询</button></div></TiltCard>
             </div>
             <div className="relative z-10 px-6 pb-20 flex-1">
-                {/* ... (History & Announcement) ... */}
                 {!hasSearched && getSearchHistory().length > 0 && (<div className="mb-6 animate-in fade-in slide-in-from-bottom-4"><div className="flex justify-between items-end mb-3"><span className="text-[10px] font-mono text-white/30 uppercase tracking-widest">最近查询</span><button onClick={clearSearchHistory} className="text-white/20 hover:text-red-500 p-2"><Trash2 size={12}/></button></div><div className="flex flex-wrap gap-2">{getSearchHistory().map((h, i) => (<button key={i} onClick={() => { setSearchQuery(h); handleSearch(null, h); }} className="px-3 py-1.5 border border-white/10 bg-white/5 rounded text-[10px] font-mono text-white/60 hover:bg-white/10 hover:text-white active:scale-95 transition-transform">{h}</button>))}</div></div>)}
                 {(apiSettings.announcement && !hasSearched) && (<div className="mb-6 p-4 rounded-lg border border-white/10 bg-black/20 backdrop-blur-md"><div className="flex items-center gap-2 mb-2"><Zap size={12} style={{ color: apiSettings.themeColor }} className="animate-pulse"/><span className="text-[10px] font-bold uppercase tracking-widest text-white/50">公告</span></div><p className="text-xs text-white/80 font-mono leading-loose"><Typewriter text={apiSettings.announcement} /></p></div>)}
-                
                 {hasSearched && searchResult && searchResult.length > 0 && (
                     <div className="animate-in slide-in-from-bottom-10 duration-700 ease-out">
                        {(() => {
                            const resultItem = searchResult.find(o => o.id === expandedOrderId) || searchResult[0];
                            const dbOrder = orders.find(o => o.id === resultItem.id) || resultItem;
                            const apiCache = logisticsDataCache[dbOrder.id];
-                           
                            let apiLatestItem = null;
                            if (apiCache && Array.isArray(apiCache.data)) { if (apiCache.data.length > 0) { const validData = apiCache.data.filter(item => item && (item.time || item.ftime)); const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); if (sortedData.length > 0) { apiLatestItem = sortedData[0]; } } }
-                           const rawStatusText = apiLatestItem ? (apiLatestItem.status || apiLatestItem.context || apiLatestItem.desc) : (dbOrder.lastApiStatus || '暂无轨迹'); // 使用 '暂无轨迹' 作为默认值，确保 getSimplifiedStatus 捕获
+                           const rawStatusText = apiLatestItem ? (apiLatestItem.status || apiLatestItem.context || apiLatestItem.desc) : (dbOrder.lastApiStatus || '暂无轨迹');
                            const statusKey = getSimplifiedStatus(rawStatusText);
                            const statusStyle = STATUS_STYLES[statusKey] || STATUS_STYLES['中转中'];
                            const StatusIllustration = statusStyle.illustration;
@@ -1873,15 +1166,7 @@ export default function App() {
                                             <div className={`absolute -right-4 -bottom-4 w-48 h-48 opacity-20 ${statusStyle.color} rotate-[-10deg] transition-all duration-500`}><StatusIllustration className="w-full h-full" /></div>
                                             <div className="p-4 relative z-10">
                                                 <div className="flex justify-between items-end mb-3">
-                                                    <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">当前状态</div> 
-                                                    <div 
-                                                        className={`flex items-center gap-2 px-2 py-1 rounded border backdrop-blur-md ${statusStyle.bg} ${statusStyle.border} ${statusStyle.glow} transition-all duration-500 cursor-pointer hover:brightness-110 active:scale-95 select-none`}
-                                                        onClick={(e) => handleStatusMultiClick(e, dbOrder)}
-                                                        title="点击5次复制回复话术"
-                                                    > 
-                                                        <statusStyle.icon size={14} className={statusStyle.color}/> <span className={`text-xs font-bold uppercase tracking-wider ${statusStyle.color}`}>{statusKey}</span> 
-                                                    </div> 
-                                                    </div>
+                                                    <div> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">当前状态</div> <div className={`flex items-center gap-2 px-2 py-1 rounded border backdrop-blur-md ${statusStyle.bg} ${statusStyle.border} ${statusStyle.glow} transition-all duration-500 cursor-pointer hover:brightness-110 active:scale-95 select-none`} onClick={(e) => handleStatusMultiClick(e, dbOrder)} title="点击5次复制回复话术"> <statusStyle.icon size={14} className={statusStyle.color}/> <span className={`text-xs font-bold uppercase tracking-wider ${statusStyle.color}`}>{statusKey}</span> </div> </div>
                                                     <div className="text-right relative z-20"> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-1">快递公司</div> <div className="text-sm font-bold" style={{ color: apiSettings.themeColor }}>{dbOrder.courier}</div> </div>
                                                 </div>
                                                 <div className="space-y-2">
@@ -1904,103 +1189,10 @@ export default function App() {
             </div>
             <div className="relative z-10 py-4 text-center border-t border-white/5 bg-black/60 backdrop-blur-xl">
                 <div className="flex items-center justify-center gap-2 text-[10px] text-white/30 font-mono tracking-widest uppercase">
-                    <ShieldCheck size={12} className="text-[#CCFF00]"/> 
-                    <span>{apiSettings.footerMsg}</span>
-                    <span className="w-px h-3 bg-white/10 mx-2"></span>
-                    <span className="text-white/20">V3.1 ShortLink</span>
+                    <ShieldCheck size={12} className="text-[#CCFF00]"/> <span>{apiSettings.footerMsg}</span><span className="w-px h-3 bg-white/10 mx-2"></span><span className="text-white/20">V3.1 ShortLink</span>
                 </div>
             </div>
-            
-            {/* [新增] 公开页面二维码 Modal (复用同一组件) */}
-            {qrCodeModal.show && (
-                    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={() => setQrCodeModal({...qrCodeModal, show: false})}>
-                        <div 
-                            className="w-full max-w-[320px] relative overflow-hidden bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300" 
-                            onClick={e => e.stopPropagation()}
-                        >
-                            {/* 顶部装饰条 */}
-                            <div className="h-1.5 w-full" style={{ backgroundColor: apiSettings.themeColor }}></div>
-
-                            <div className="p-6 pb-2 relative z-10">
-                                {/* Header */}
-                                <div className="flex justify-between items-start mb-8">
-                                    <div>
-                                        <h1 className="text-3xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-                                            DHCX<span style={{ color: apiSettings.themeColor }}>.ME</span>
-                                        </h1>
-                                        <p className="text-[9px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
-                                    </div>
-                                    
-                                    <div className="bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
-                                        <ShieldCheck size={10} className="opacity-70" />
-                                        <span className="text-[10px] font-bold tracking-wider">内部查询通道</span>
-                                    </div>
-                                </div>
-                                
-                                <div className="border-t-2 border-black mb-6"></div>
-                                
-                                <div className="space-y-6">
-                                    <div className="flex justify-between items-baseline">
-                                        <div>
-                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">RECEIVER / 收件人</div>
-                                            <div className="text-base font-bold text-black">{qrCodeModal.info?.name}</div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">COURIER / 快递</div>
-                                            <div className="text-base font-black text-black font-mono">{qrCodeModal.info?.courier}</div>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">ITEM / 商品</div>
-                                        <div className="text-sm font-bold text-black break-words leading-relaxed border-l-2 pl-3" style={{ borderColor: apiSettings.themeColor }}>
-                                            {qrCodeModal.info?.product}
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
-                                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">TRACKING NO. / 单号</div>
-                                        <div className="font-mono text-xl font-black text-black tracking-tight break-all leading-none">
-                                            {qrCodeModal.info?.trackingNumber}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Cutout Divider */}
-                            <div className="relative w-full h-6 flex items-center justify-center mt-2">
-                                <div className="absolute left-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div> 
-                                <div className="absolute right-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div>
-                                <div className="w-full border-t border-dashed border-gray-300 mx-4"></div>
-                            </div>
-
-                            {/* Footer Section */}
-                            <div className="p-6 pt-2 bg-white flex flex-col items-center">
-                                <div className="flex gap-4 items-center w-full">
-                                    <div className="w-20 h-20 bg-white p-1 rounded-lg border border-black/5 shadow-sm shrink-0">
-                                        {qrCodeModal.loading ? (
-                                            <div className="w-full h-full flex items-center justify-center"><RefreshCw size={24} className="animate-spin text-black/20"/></div>
-                                        ) : (
-                                            <img src={qrCodeModal.url} alt="QR" className="w-full h-full object-contain mix-blend-multiply" crossOrigin="anonymous" />
-                                        )}
-                                    </div>
-                                    <div className="flex-1 flex flex-col justify-center h-20">
-                                        <div className="text-xs font-bold text-black mb-1">扫码实时追踪</div>
-                                        <div className="text-[10px] text-gray-400 leading-tight">请使用微信或浏览器扫码<br/>获取最新物流动态</div>
-                                        {/* Decorative bar */}
-                                        <div className="h-3 w-32 mt-2 opacity-20" style={{ backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2r9//38gYGAEESAAEGAAGRgE+bRsBPwAAAAASUVORK5CYII=")`, backgroundRepeat: 'repeat' }}></div>
-                                    </div>
-                                </div>
-                                
-                                <div className="mt-6 text-[9px] font-mono text-gray-300 w-full text-center">
-                                    ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
-                                </div>
-                            </div>
-                            
-                            <button onClick={() => setQrCodeModal({...qrCodeModal, show: false})} className="absolute top-4 right-4 z-20 text-gray-400 hover:text-black transition-colors"><X size={20}/></button>
-                        </div>
-                    </div>
-            )}
+            <QrCodeModal show={qrCodeModal.show} onClose={() => setQrCodeModal({...qrCodeModal, show: false})} data={qrCodeModal} themeColor={apiSettings.themeColor} />
         </div>
     );
 }
