@@ -61,6 +61,7 @@ const initSupabase = async () => {
          return supabase;
     }
     try {
+        // 修复了这里的 URL 格式，移除了多余的 Markdown 标记
         const sb = await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', 'supabase');
         if (sb && sb.createClient) {
             supabase = sb.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -87,6 +88,7 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
         try {
             // 动态加载 html-to-image
             if (!window.htmlToImage) {
+                // 修复了这里的 URL 格式
                 await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js', 'htmlToImage');
             }
 
@@ -126,14 +128,9 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
 
             setPreviewUrl(dataUrl); // 设置预览图片，供手机端长按保存
 
-            // 如果是电脑端，尝试自动下载；手机端则只展示预览
-            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            if (!isMobile) {
-                const link = document.createElement('a');
-                link.download = `DHCX-Card-${data.info?.trackingNumber || 'Share'}.png`;
-                link.href = dataUrl;
-                link.click();
-            }
+            // 移除自动下载逻辑，仅展示预览图
+            // const isMobile = ...
+            // if (!isMobile) { ... }
 
         } catch (error) {
             console.error('截图生成失败:', error);
@@ -163,12 +160,12 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
                             <CheckCircle size={24} className="animate-bounce"/>
                             <h3 className="text-xl font-bold">卡片已生成</h3>
                         </div>
-                        <p className="text-sm text-white/60">请长按下方图片保存到相册</p>
+                        <p className="text-sm text-white/60">请长按或右键点击图片复制</p>
                     </div>
                     
                     <img 
                         src={previewUrl} 
-                        alt="Long press to save" 
+                        alt="Long press or Right Click to Copy" 
                         className="w-full rounded-3xl shadow-2xl border border-white/10 select-none touch-auto" 
                         onClick={e => e.stopPropagation()} 
                         style={{ WebkitTouchCallout: 'default' }} // 允许 iOS 长按菜单
@@ -291,7 +288,7 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
                         className="flex-1 bg-white hover:bg-gray-100 text-black py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 shadow-lg"
                     >
                         {isSaving ? <RefreshCw size={16} className="animate-spin"/> : <ImageDown size={16}/>}
-                        {isSaving ? "生成中..." : "保存卡片"}
+                        {isSaving ? "生成中..." : "生成卡片"}
                     </button>
                     <button onClick={onClose} className="w-12 h-12 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-all active:scale-95 backdrop-blur-md border border-white/10">
                         <X size={20}/>
