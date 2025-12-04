@@ -824,9 +824,6 @@ export default function App() {
     const [isSaving, setIsSaving] = useState(false); 
     const [isImporting, setIsImporting] = useState(false);
     const [isDeduplicating, setIsDeduplicating] = useState(false);
-    // [新增] 卡片引用和复制状态
-    const cardRef = useRef(null);
-    const [isCopyingCard, setIsCopyingCard] = useState(false);
     
     // [新增] AI Modal 状态
     const [aiModal, setAiModal] = useState({ show: false, order: null, analysis: null, loading: false });
@@ -1362,56 +1359,6 @@ export default function App() {
         });
     };
 
-    // [修改] 卡片截图复制功能 - 改用 SnapDOM 模式
-    const handleCopyCardImage = async () => {
-        if (!cardRef.current || isCopyingCard) return;
-        setIsCopyingCard(true);
-        showToast("正在生成高清卡片 (SnapDOM)...", "success");
-
-        try {
-            // 1. 动态加载 SnapDOM
-            // 文档: https://github.com/zumerlab/snapdom
-            await loadScript('https://cdn.jsdelivr.net/npm/@zumer/snapdom/dist/snapdom.min.js', 'snapdom');
-            
-            // [修复] 强制等待字体加载
-            await document.fonts.ready;
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // 2. 生成 Blob (SnapDOM 原生支持 scale 参数)
-            // SnapDOM is faster and handles styles better than html2canvas
-            const blob = await window.snapdom.toBlob(cardRef.current, { 
-                scale: 3, // 3x 高清
-                quality: 1.0,
-                bgcolor: '#ffffff' // 强制白底
-            });
-
-            if (!blob) throw new Error("Blob generation failed");
-
-            // 3. 写入剪贴板
-            try {
-                if (typeof navigator.clipboard === 'undefined' || typeof navigator.clipboard.write === 'undefined') {
-                    throw new Error("Clipboard API not available");
-                }
-                
-                await navigator.clipboard.write([
-                    new ClipboardItem({ 'image/png': blob })
-                ]);
-                showToast("卡片已复制到剪贴板！", "success");
-                if (navigator.vibrate) navigator.vibrate(200);
-            } catch (err) {
-                console.warn("Clipboard write failed:", err);
-                showToast("复制失败，请长按或右键卡片进行保存", "error");
-            } 
-
-        } catch (e) {
-            console.error("SnapDOM error:", e);
-            showToast("生成失败: " + e.message, "error");
-        } finally {
-            setIsCopyingCard(false);
-        }
-    };
-
-
     // --- [修改] 使用在线 API 生成二维码 (修复链接和加载失败问题) ---
     const handleShowQrCode = async (order) => {
         // [新增] 构造卡片信息
@@ -1452,10 +1399,7 @@ export default function App() {
                     loading: false 
                 });
                 
-                // [优化] 自动截图：增加缓冲时间到 2000ms (2秒)，确保 DOM 渲染和字体加载完成，并自动触发截图
-                setTimeout(() => {
-                    handleCopyCardImage();
-                }, 2000);
+                // [修改] 移除自动截图逻辑
             };
             img.onerror = () => {
                  // Fallback if API fails (rare, but good practice)
@@ -1766,11 +1710,10 @@ export default function App() {
                     </div>
                 </div>
 
-                {/* [修改] 二维码 Modal - 仿制 DHCX 白色卡片样式 */}
+                {/* [修改] 二维码 Modal - 仿制 DHCX 白色卡片样式 (无截图功能) */}
                 {qrCodeModal.show && (
                     <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={() => setQrCodeModal({...qrCodeModal, show: false})}>
                         <div 
-                            ref={cardRef} 
                             className="w-full max-w-[320px] relative overflow-hidden bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300" 
                             onClick={e => e.stopPropagation()}
                         >
@@ -1851,18 +1794,6 @@ export default function App() {
                                 <div className="mt-6 text-[9px] font-mono text-gray-300 w-full text-center">
                                     ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
                                 </div>
-                            </div>
-
-                             {/* PC 端底部提示 (自动复制提示) */}
-                             <div className="absolute bottom-4 left-0 right-0 text-center text-xs font-mono text-gray-300 hidden md:block">
-                                {isCopyingCard ? "正在生成..." : "卡片已生成"}
-                             </div>
-
-                             {/* 移动端手动复制按钮 */}
-                             <div className="absolute bottom-4 right-4 z-20 md:hidden">
-                                <button onClick={handleCopyCardImage} disabled={isCopyingCard} className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
-                                    {isCopyingCard ? <RefreshCw size={16} className="animate-spin"/> : <Copy size={16}/>}
-                                </button>
                             </div>
                             
                             <button onClick={() => setQrCodeModal({...qrCodeModal, show: false})} className="absolute top-4 right-4 z-20 text-gray-400 hover:text-black transition-colors"><X size={20}/></button>
@@ -1935,9 +1866,9 @@ export default function App() {
                            const statusStyle = STATUS_STYLES[statusKey] || STATUS_STYLES['中转中'];
                            const StatusIllustration = statusStyle.illustration;
                            return (
-                            <>
-                                    {searchResult.length > 1 && ( <div className="mb-6"> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-2 ml-1">查询到 {searchResult.length} 条记录:</div> <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">{searchResult.map(item => (<button key={item.id} onClick={() => { setExpandedOrderId(item.id); fetchLogistics(item); }} className={`flex-shrink-0 p-3 rounded-xl border transition-all min-w-[140px] text-left active:scale-95 ${expandedOrderId === item.id ? 'bg-white/10 border-[#CCFF00] shadow-[0_0_10px_rgba(204,255,0,0.2)]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}><div className={`text-[10px] font-mono mb-1 ${expandedOrderId === item.id ? 'text-[#CCFF00]' : 'text-white/40'}`}>{formatDate(item.timestamp)}</div><div className={`text-xs font-bold truncate ${expandedOrderId === item.id ? 'text-white' : 'text-white/70'}`}>{item.trackingNumber}</div></button>))}</div> </div> )}
-                                     <TiltCard className="relative group rounded-2xl overflow-hidden border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl">
+                           <>
+                                   {searchResult.length > 1 && ( <div className="mb-6"> <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest mb-2 ml-1">查询到 {searchResult.length} 条记录:</div> <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">{searchResult.map(item => (<button key={item.id} onClick={() => { setExpandedOrderId(item.id); fetchLogistics(item); }} className={`flex-shrink-0 p-3 rounded-xl border transition-all min-w-[140px] text-left active:scale-95 ${expandedOrderId === item.id ? 'bg-white/10 border-[#CCFF00] shadow-[0_0_10px_rgba(204,255,0,0.2)]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}><div className={`text-[10px] font-mono mb-1 ${expandedOrderId === item.id ? 'text-[#CCFF00]' : 'text-white/40'}`}>{formatDate(item.timestamp)}</div><div className={`text-xs font-bold truncate ${expandedOrderId === item.id ? 'text-white' : 'text-white/70'}`}>{item.trackingNumber}</div></button>))}</div> </div> )}
+                                    <TiltCard className="relative group rounded-2xl overflow-hidden border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl">
                                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/50 to-transparent opacity-50"></div>
                                             <div className={`absolute -right-4 -bottom-4 w-48 h-48 opacity-20 ${statusStyle.color} rotate-[-10deg] transition-all duration-500`}><StatusIllustration className="w-full h-full" /></div>
                                             <div className="p-4 relative z-10">
@@ -1984,7 +1915,6 @@ export default function App() {
             {qrCodeModal.show && (
                     <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={() => setQrCodeModal({...qrCodeModal, show: false})}>
                         <div 
-                            ref={cardRef} 
                             className="w-full max-w-[320px] relative overflow-hidden bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300" 
                             onClick={e => e.stopPropagation()}
                         >
@@ -2065,18 +1995,6 @@ export default function App() {
                                 <div className="mt-6 text-[9px] font-mono text-gray-300 w-full text-center">
                                     ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
                                 </div>
-                            </div>
-
-                             {/* PC 端底部提示 (自动复制提示) */}
-                             <div className="absolute bottom-4 left-0 right-0 text-center text-xs font-mono text-gray-300 hidden md:block">
-                                {isCopyingCard ? "正在生成..." : "卡片已生成"}
-                             </div>
-
-                             {/* 移动端手动复制按钮 */}
-                             <div className="absolute bottom-4 right-4 z-20 md:hidden">
-                                <button onClick={handleCopyCardImage} disabled={isCopyingCard} className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
-                                    {isCopyingCard ? <RefreshCw size={16} className="animate-spin"/> : <Copy size={16}/>}
-                                </button>
                             </div>
                             
                             <button onClick={() => setQrCodeModal({...qrCodeModal, show: false})} className="absolute top-4 right-4 z-20 text-gray-400 hover:text-black transition-colors"><X size={20}/></button>
