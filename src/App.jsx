@@ -93,22 +93,36 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
             const element = cardRef.current;
             if (!element) return;
 
-            // 给一点时间让浏览器渲染完全
+            // 给一点时间让浏览器渲染完全，确保字体加载
             await new Promise(resolve => setTimeout(resolve, 100));
 
             const filter = (node) => {
                 return !node.classList?.contains('exclude-from-capture');
             };
 
-            // 生成高清图片 (配置优化：降低倍率以提高手机端成功率)
-            const dataUrl = await window.htmlToImage.toPng(element, { 
-                quality: 0.95, // 略微降低质量以减少体积
-                backgroundColor: '#ffffff', // 强制白色背景
-                pixelRatio: 2, // 降为2倍图，3倍图在部分iOS设备会导致崩溃或生成失败
+            const options = {
+                quality: 1.0, // 提升质量到最高
+                backgroundColor: null, // <--- 修改处：设为null以保持透明背景，防止圆角变方角
                 cacheBust: true, // 防止缓存导致的跨域问题
                 skipAutoScale: true, // 防止移动端自动缩放导致的偏移
                 filter: filter
-            });
+            };
+
+            let dataUrl;
+            try {
+                // 优先尝试 3倍图 (超高清)
+                dataUrl = await window.htmlToImage.toPng(element, { 
+                    ...options, 
+                    pixelRatio: 3 
+                });
+            } catch (highResError) {
+                console.warn('3x capture failed, falling back to 2x', highResError);
+                // 如果3倍图在部分 iOS 设备内存溢出，回退到 2倍图
+                dataUrl = await window.htmlToImage.toPng(element, { 
+                    ...options, 
+                    pixelRatio: 2 
+                });
+            }
 
             setPreviewUrl(dataUrl); // 设置预览图片，供手机端长按保存
 
@@ -123,12 +137,12 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
 
         } catch (error) {
             console.error('截图生成失败:', error);
-            // 二次重试机制（针对Safari第一次可能失败）
+            // 最后的保底重试
             try {
                  await new Promise(resolve => setTimeout(resolve, 500));
                  const element = cardRef.current;
                  const dataUrl = await window.htmlToImage.toPng(element, { 
-                    quality: 0.9, backgroundColor: '#ffffff', pixelRatio: 2, cacheBust: true
+                    quality: 0.9, backgroundColor: null, pixelRatio: 2, cacheBust: true
                  });
                  setPreviewUrl(dataUrl);
             } catch (retryError) {
@@ -143,7 +157,7 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
     if (previewUrl) {
         return (
             <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/95 backdrop-blur-md p-6" onClick={() => setPreviewUrl(null)}>
-                <div className="flex flex-col items-center gap-6 w-full max-w-[320px] animate-in zoom-in-95 duration-300">
+                <div className="flex flex-col items-center gap-6 w-full max-w-[300px] animate-in zoom-in-95 duration-300">
                     <div className="text-white text-center space-y-1">
                         <div className="flex items-center justify-center gap-2 text-[#CCFF00] mb-2">
                             <CheckCircle size={24} className="animate-bounce"/>
@@ -182,56 +196,56 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
     // 默认编辑/查看模式
     return (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={onClose}>
-            <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300 w-full max-w-[320px]">
-                {/* 卡片主体 */}
+            <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300 w-full max-w-[300px]">
+                {/* 卡片主体 - 稍微调小了 max-width 使其更紧凑 */}
                 <div 
                     ref={cardRef}
-                    className="w-full relative overflow-hidden bg-white rounded-3xl shadow-2xl" 
+                    className="w-full relative overflow-hidden bg-white rounded-3xl shadow-2xl antialiased" 
                     onClick={e => e.stopPropagation()}
                 >
                     {/* 顶部装饰条 */}
                     <div className="h-1.5 w-full" style={{ backgroundColor: themeColor }}></div>
 
-                    <div className="p-6 pb-2 relative z-10">
+                    <div className="p-5 pb-2 relative z-10">
                         {/* Header */}
-                        <div className="flex justify-between items-start mb-8">
+                        <div className="flex justify-between items-start mb-6">
                             <div>
-                                <h1 className="text-3xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+                                <h1 className="text-2xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
                                     DHCX<span style={{ color: themeColor }}>.ME</span>
                                 </h1>
-                                <p className="text-[9px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
+                                <p className="text-[8px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
                             </div>
                             
-                            <div className="bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 shadow-md">
-                                <ShieldCheck size={10} className="opacity-70" />
-                                <span className="text-[10px] font-bold tracking-wider">内部查询通道</span>
+                            <div className="bg-black text-white px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
+                                <ShieldCheck size={9} className="opacity-70" />
+                                <span className="text-[9px] font-bold tracking-wider">内部查询通道</span>
                             </div>
                         </div>
                         
-                        <div className="border-t-2 border-black mb-6"></div>
+                        <div className="border-t-2 border-black mb-5"></div>
                         
-                        <div className="space-y-6">
+                        <div className="space-y-5">
                             <div className="flex justify-between items-baseline">
                                 <div>
-                                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">RECEIVER / 收件人</div>
-                                    <div className="text-base font-bold text-black">{data.info?.name}</div>
+                                    <div className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">RECEIVER / 收件人</div>
+                                    <div className="text-sm font-bold text-black">{data.info?.name}</div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">COURIER / 快递</div>
-                                    <div className="text-base font-black text-black font-mono">{data.info?.courier}</div>
+                                    <div className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">COURIER / 快递</div>
+                                    <div className="text-sm font-black text-black font-mono">{data.info?.courier}</div>
                                 </div>
                             </div>
 
                             <div>
-                                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">ITEM / 商品</div>
-                                <div className="text-sm font-bold text-black break-words leading-relaxed border-l-2 pl-3" style={{ borderColor: themeColor }}>
+                                <div className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">ITEM / 商品</div>
+                                <div className="text-xs font-bold text-black break-words leading-relaxed border-l-2 pl-2" style={{ borderColor: themeColor }}>
                                     {data.info?.product}
                                 </div>
                             </div>
 
                             <div className="bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
-                                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">TRACKING NO. / 单号</div>
-                                <div className="font-mono text-xl font-black text-black tracking-tight break-all leading-none">
+                                <div className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">TRACKING NO. / 单号</div>
+                                <div className="font-mono text-lg font-black text-black tracking-tight break-all leading-none">
                                     {data.info?.trackingNumber}
                                 </div>
                             </div>
@@ -239,31 +253,31 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
                     </div>
 
                     {/* Cutout Divider */}
-                    <div className="relative w-full h-6 flex items-center justify-center mt-2">
-                        <div className="absolute left-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div> 
-                        <div className="absolute right-[-8px] w-4 h-4 rounded-full bg-[#111] z-10"></div>
+                    <div className="relative w-full h-5 flex items-center justify-center mt-2">
+                        <div className="absolute left-[-6px] w-3 h-3 rounded-full bg-[#111] z-10"></div> 
+                        <div className="absolute right-[-6px] w-3 h-3 rounded-full bg-[#111] z-10"></div>
                         <div className="w-full border-t border-dashed border-gray-300 mx-4"></div>
                     </div>
 
                     {/* Footer Section */}
-                    <div className="p-6 pt-2 bg-white flex flex-col items-center">
-                        <div className="flex gap-4 items-center w-full">
-                            <div className="w-20 h-20 bg-white p-1 rounded-lg border border-black/5 shadow-sm shrink-0">
+                    <div className="p-5 pt-1 bg-white flex flex-col items-center">
+                        <div className="flex gap-3 items-center w-full">
+                            <div className="w-16 h-16 bg-white p-1 rounded-lg border border-black/5 shadow-sm shrink-0">
                                 {data.loading ? (
-                                    <div className="w-full h-full flex items-center justify-center"><RefreshCw size={24} className="animate-spin text-black/20"/></div>
+                                    <div className="w-full h-full flex items-center justify-center"><RefreshCw size={20} className="animate-spin text-black/20"/></div>
                                 ) : (
                                     <img src={data.url} alt="QR" className="w-full h-full object-contain mix-blend-multiply" crossOrigin="anonymous" />
                                 )}
                             </div>
-                            <div className="flex-1 flex flex-col justify-center h-20">
-                                <div className="text-xs font-bold text-black mb-1">扫码实时追踪</div>
-                                <div className="text-[10px] text-gray-400 leading-tight">请使用微信或浏览器扫码<br/>获取最新物流动态</div>
+                            <div className="flex-1 flex flex-col justify-center h-16">
+                                <div className="text-[10px] font-bold text-black mb-0.5">长按识别查看进度</div>
+                                <div className="text-[9px] text-gray-400 leading-tight transform scale-95 origin-left">微信内长按图片识别二维码<br/>即可查看实时物流</div>
                                 {/* Decorative bar */}
-                                <div className="h-3 w-32 mt-2 opacity-20" style={{ backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2r9//38gYGAEESAAEGAAGRgE+bRsBPwAAAAASUVORK5CYII=")`, backgroundRepeat: 'repeat' }}></div>
+                                <div className="h-2 w-24 mt-1.5 opacity-20" style={{ backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2r9//38gYGAEESAAEGAAGRgE+bRsBPwAAAAASUVORK5CYII=")`, backgroundRepeat: 'repeat' }}></div>
                             </div>
                         </div>
                         
-                        <div className="mt-6 text-[9px] font-mono text-gray-300 w-full text-center">
+                        <div className="mt-4 text-[8px] font-mono text-gray-300 w-full text-center">
                             ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
                         </div>
                     </div>
