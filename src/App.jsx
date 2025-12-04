@@ -69,10 +69,16 @@ const initSupabase = async () => {
     return supabase;
 };
 
-// --- [组件] 二维码卡片弹窗 (集成 html-to-image) ---
+// --- [组件] 二维码卡片弹窗 (集成 html-to-image 修复版) ---
 const QrCodeModal = ({ show, onClose, data, themeColor }) => {
     const cardRef = useRef(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState(null);
+
+    // 每次弹窗打开时重置预览状态
+    useEffect(() => {
+        if (!show) setPreviewUrl(null);
+    }, [show]);
 
     if (!show) return null;
 
@@ -87,31 +93,93 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
             const element = cardRef.current;
             if (!element) return;
 
-            // 过滤掉不想截图的元素（比如关闭按钮，虽然它在container外面，但为了保险起见）
+            // 给一点时间让浏览器渲染完全
+            await new Promise(resolve => setTimeout(resolve, 100));
+
             const filter = (node) => {
                 return !node.classList?.contains('exclude-from-capture');
             };
 
+            // 生成高清图片 (配置优化：降低倍率以提高手机端成功率)
             const dataUrl = await window.htmlToImage.toPng(element, { 
-                quality: 1.0, 
-                backgroundColor: '#ffffff', // 强制白色背景，防止圆角透明部分变黑
-                pixelRatio: 2, // 2倍图，更高清
+                quality: 0.95, // 略微降低质量以减少体积
+                backgroundColor: '#ffffff', // 强制白色背景
+                pixelRatio: 2, // 降为2倍图，3倍图在部分iOS设备会导致崩溃或生成失败
+                cacheBust: true, // 防止缓存导致的跨域问题
+                skipAutoScale: true, // 防止移动端自动缩放导致的偏移
                 filter: filter
             });
 
-            const link = document.createElement('a');
-            link.download = `DHCX-Card-${data.info?.trackingNumber || 'Share'}.png`;
-            link.href = dataUrl;
-            link.click();
+            setPreviewUrl(dataUrl); // 设置预览图片，供手机端长按保存
+
+            // 如果是电脑端，尝试自动下载；手机端则只展示预览
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (!isMobile) {
+                const link = document.createElement('a');
+                link.download = `DHCX-Card-${data.info?.trackingNumber || 'Share'}.png`;
+                link.href = dataUrl;
+                link.click();
+            }
 
         } catch (error) {
             console.error('截图生成失败:', error);
-            alert("图片生成失败，请重试或截屏保存");
+            // 二次重试机制（针对Safari第一次可能失败）
+            try {
+                 await new Promise(resolve => setTimeout(resolve, 500));
+                 const element = cardRef.current;
+                 const dataUrl = await window.htmlToImage.toPng(element, { 
+                    quality: 0.9, backgroundColor: '#ffffff', pixelRatio: 2, cacheBust: true
+                 });
+                 setPreviewUrl(dataUrl);
+            } catch (retryError) {
+                alert("图片生成失败，可能是浏览器兼容性问题，请尝试直接截屏。");
+            }
         } finally {
             setIsSaving(false);
         }
     };
 
+    // 如果生成了预览图，显示预览层（覆盖在原卡片上）
+    if (previewUrl) {
+        return (
+            <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/95 backdrop-blur-md p-6" onClick={() => setPreviewUrl(null)}>
+                <div className="flex flex-col items-center gap-6 w-full max-w-[320px] animate-in zoom-in-95 duration-300">
+                    <div className="text-white text-center space-y-1">
+                        <div className="flex items-center justify-center gap-2 text-[#CCFF00] mb-2">
+                            <CheckCircle size={24} className="animate-bounce"/>
+                            <h3 className="text-xl font-bold">卡片已生成</h3>
+                        </div>
+                        <p className="text-sm text-white/60">请长按下方图片保存到相册</p>
+                    </div>
+                    
+                    <img 
+                        src={previewUrl} 
+                        alt="Long press to save" 
+                        className="w-full rounded-3xl shadow-2xl border border-white/10 select-none touch-auto" 
+                        onClick={e => e.stopPropagation()} 
+                        style={{ WebkitTouchCallout: 'default' }} // 允许 iOS 长按菜单
+                    />
+                    
+                    <div className="flex gap-3 w-full">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setPreviewUrl(null); }} 
+                            className="flex-1 bg-white text-black py-3.5 rounded-full font-bold text-sm hover:brightness-90 transition-all active:scale-95"
+                        >
+                            返回
+                        </button>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onClose(); }} 
+                            className="flex-1 bg-white/10 text-white py-3.5 rounded-full font-bold text-sm border border-white/10 hover:bg-white/20 transition-all active:scale-95"
+                        >
+                            关闭
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // 默认编辑/查看模式
     return (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={onClose}>
             <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300 w-full max-w-[320px]">
