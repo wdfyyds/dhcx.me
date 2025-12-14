@@ -974,17 +974,61 @@ export default function App() {
         }
     };
     
-    const handleQuickCopyReply = (order) => { 
-        showToast("正在生成短链并复制...", "success");
+    const handleQuickCopyReply = async (order) => { 
+        showToast("正在同步物流轨迹...", "success");
+        
+        let tracks = logisticsDataCache[order.id]?.data || [];
+        
+        // Attempt to fetch fresh data
+        try {
+            let courierCode = COURIER_CODE_MAP[order.courier];
+            if (!courierCode && order.courier !== '通用快递') { 
+                const mapKey = Object.keys(COURIER_CODE_MAP).find(k => order.courier.includes(k) || k.includes(order.courier)); 
+                if (mapKey) courierCode = COURIER_CODE_MAP[mapKey]; 
+            }
+            
+            if (courierCode || order.courier === '通用快递') {
+                 const result = await DataService.queryLogisticsFromEdge(order.trackingNumber, courierCode, order.phone);
+                 const isSuccess = (result.code == 200) || (result.success === true) || (result.Success === true) || (String(result.status) === "0") || (String(result.status) === "200") || (Array.isArray(result.data) && result.data.length > 0) || (Array.isArray(result.list) && result.list.length > 0) || (Array.isArray(result.traces) && result.traces.length > 0) || (Array.isArray(result.Traces) && result.Traces.length > 0);
+                 
+                 if (isSuccess) {
+                     let rawList = result.data || result.list || result.traces || result.Traces || result.logisticsTraceDetailList || [];
+                     if (!Array.isArray(rawList) && typeof rawList === 'object') rawList = rawList.list || rawList.traces || rawList.Traces || [];
+                     // Normalize
+                     const list = rawList.map(item => ({ time: item.time || item.ftime || item.AcceptTime || item.time_stamp || Date.now(), status: item.status || item.context || item.desc || item.AcceptStation || "未知状态" }));
+                     
+                     tracks = list; // Use fresh data
+                     // Update cache
+                     setLogisticsDataCache(prev => ({ ...prev, [order.id]: { loading: false, data: list, error: null } }));
+                 }
+            }
+        } catch (err) {
+            console.warn("Auto-fetch failed during copy reply:", err);
+            // Fallback to existing tracks if any, or don't update 'tracks' variable if it was empty/cache
+        }
+
+        showToast("正在生成话术...", "success");
+
         const createMessageTask = async () => {
-            let realTimeStatus = order.lastApiStatus; const cache = logisticsDataCache[order.id]; if (cache && cache.data && Array.isArray(cache.data) && cache.data.length > 0) { const validData = cache.data.filter(item => item && (item.time || item.ftime)); const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); if (sortedData.length > 0) realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; } 
+            let realTimeStatus = order.lastApiStatus; 
+            
+            // Use the 'tracks' variable which is either fresh or cached
+            if (tracks && Array.isArray(tracks) && tracks.length > 0) { 
+                const validData = tracks.filter(item => item && (item.time || item.ftime)); 
+                const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); 
+                if (sortedData.length > 0) realTimeStatus = sortedData[0].status || sortedData[0].context || sortedData[0].desc; 
+            } 
+            
             const statusSimple = getSimplifiedStatus(realTimeStatus); 
+            // ... (Rest of existing logic for shortlink and message generation) ...
             let queryValue = order.trackingNumber.trim(); let queryLink;
             try { const shortCode = await DataService.getOrCreateShortLink(queryValue); queryLink = `${SHORT_LINK_BASE_URL}/${shortCode}`.replace('https://', '').replace('http://', ''); } catch (e) { console.warn("短链生成失败:", e.message); const safeToken = encodeToken(queryValue); queryLink = `${SHORT_LINK_BASE_URL}?q=${safeToken}`.replace('https://', '').replace('http://', ''); }
             let templateKey = 'TRANSPORT'; if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; else if (statusSimple === '派件中') templateKey = 'DELIVERING'; else if (statusSimple === '已签收') templateKey = 'SIGN'; else if (statusSimple === '异常件') templateKey = 'ABNORMAL'; 
             let message = DEFAULT_TEMPLATES[templateKey]; message = message.replace(/{name}/g, order.recipientName || '客户').replace(/{product}/g, order.product || '商品').replace(/{courier}/g, order.courier).replace(/{no}/g, order.trackingNumber).replace(/{link}/g, queryLink).replace(/{status}/g, realTimeStatus || statusSimple);
             return message;
         };
+        
+        // ... (Clipboard logic) ...
         if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
             try { const textBlobPromise = createMessageTask().then(text => new Blob([text], { type: 'text/plain' })); const item = new ClipboardItem({ 'text/plain': textBlobPromise }); navigator.clipboard.write([item]).then(() => { showToast("复制成功"); if (navigator.vibrate) navigator.vibrate(200); }).catch(err => { createMessageTask().then(text => copyToClipboard(text)); }); return; } catch (e) {}
         }
