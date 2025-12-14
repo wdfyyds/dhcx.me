@@ -725,7 +725,26 @@ const formatLogisticsTime = (val) => {
 
 const parseLogisticsDate = (val) => { if (!val) return new Date(0); const formatted = formatLogisticsTime(val); let parseStr = formatted.replace(/-/g, '/'); if (!/^\d{4}/.test(parseStr)) parseStr = `${new Date().getFullYear()}/${parseStr}`; const date = new Date(parseStr); return isNaN(date.getTime()) ? new Date(0) : date; };
 const translateStatus = (code) => STATUS_MAP[code] || code;
-const autoDetectCourier = (number) => { if (!number) return '通用快递'; const n = String(number).toUpperCase(); if (n.startsWith('SF')) return '顺丰速运'; if (n.startsWith('JD')) return '京东物流'; if (n.startsWith('YT') || n.startsWith('8')) return '圆通速递'; if (n.startsWith('ZTO') || n.startsWith('7') || n.startsWith('6')) return '中通快递'; if (n.startsWith('YD') || n.startsWith('3') || n.startsWith('4')) return '韵达速递'; if (n.startsWith('JTS')) return '极兔速递'; if (n.startsWith('EMS') || n.startsWith('E')) return 'EMS'; if (n.startsWith('STO') || n.startsWith('77')) return '申通快递'; return '通用快递'; };
+
+// --- 修复: 调整申通快递判断顺序，防止被中通(7开头)误判 ---
+const autoDetectCourier = (number) => { 
+    if (!number) return '通用快递'; 
+    const n = String(number).toUpperCase(); 
+    if (n.startsWith('SF')) return '顺丰速运'; 
+    if (n.startsWith('JD')) return '京东物流'; 
+    if (n.startsWith('YT') || n.startsWith('8')) return '圆通速递'; 
+    
+    // 将申通判断提前到中通之前
+    if (n.startsWith('STO') || n.startsWith('77')) return '申通快递'; 
+    if (n.startsWith('ZTO') || n.startsWith('7') || n.startsWith('6')) return '中通快递'; 
+    
+    if (n.startsWith('YD') || n.startsWith('3') || n.startsWith('4')) return '韵达速递'; 
+    if (n.startsWith('JTS')) return '极兔速递'; 
+    if (n.startsWith('EMS') || n.startsWith('E')) return 'EMS'; 
+    
+    return '通用快递'; 
+};
+
 const getMockLogisticsData = (number, courier, errorMsg = "API 失败，已切换为演示数据") => { const now = new Date(); const oneDay = 24 * 60 * 60 * 1000; return [ { time: now.getTime(), status: `【系统提示】${errorMsg}。已自动切换为演示数据。` }, { time: now.getTime() - 1000 * 60 * 30, status: "【运输中】快件已到达 目的地转运中心" }, { time: now.getTime() - oneDay, status: "【运输中】快件已发往 目的地转运中心" }, ]; };
 const STORAGE_KEY = 'sneaker.dh.cx_search_log';
 const getSearchHistory = () => { try { const log = localStorage.getItem(STORAGE_KEY); return log ? log.split(',').filter(item => item.trim() !== '') : []; } catch (e) { return []; } };
@@ -1248,7 +1267,30 @@ export default function App() {
                     </div>
                 )}
                 {viewingLogisticsOrder && (<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4"><div className="bg-[#111] w-full max-w-md rounded-2xl overflow-hidden border border-white/10 shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"><div className="p-5 border-b border-white/10 flex justify-between items-center bg-white/[0.02]"><div><div className="text-white font-bold text-lg mb-1">{viewingLogisticsOrder.recipientName}</div><div className="text-xs font-mono text-white/40">{viewingLogisticsOrder.trackingNumber}</div></div><button onClick={() => setViewingLogisticsOrder(null)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><X size={18}/></button></div><div className="flex-1 overflow-y-auto p-0 custom-scrollbar bg-black"><LogisticsTimeline order={viewingLogisticsOrder} logisticsDataCache={logisticsDataCache} themeColor={apiSettings.themeColor} /></div></div></div>)}
-                {showEditModal && (<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4"><div className="bg-[#111] w-full max-w-lg rounded-2xl p-6 md:p-8 border border-white/10 shadow-2xl animate-in zoom-in-95 duration-200"><div className="flex justify-between items-center mb-8"><h3 className="font-bold text-xl text-white">编辑订单</h3><button onClick={() => setShowEditModal(false)} className="p-2"><X size={24} className="text-white/40"/></button></div><div className="grid grid-cols-2 gap-4 md:gap-5 mb-8"><input value={newOrder.recipientName} onChange={e => setNewOrder({...newOrder, recipientName: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="收件人"/><input value={newOrder.phone} onChange={e => setNewOrder({...newOrder, phone: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="手机号"/><input value={newOrder.product} onChange={e => setNewOrder({...newOrder, product: e.target.value})} className="col-span-2 w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="商品名称" /><input value={newOrder.trackingNumber} onChange={handleTrackingNumberChange} className="col-span-2 w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="运单号"/></div><div className="flex gap-3 justify-end"><button onClick={handleSaveOrder} className="px-6 py-3 text-black rounded-lg font-bold active:scale-95 transition-transform" style={{ backgroundColor: apiSettings.themeColor }}>保存</button></div></div></div>)}
+                
+                {/* 修复: 编辑订单弹窗增加快递名称修改功能 */}
+                {showEditModal && (
+                    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
+                        <div className="bg-[#111] w-full max-w-lg rounded-2xl p-6 md:p-8 border border-white/10 shadow-2xl animate-in zoom-in-95 duration-200">
+                            <div className="flex justify-between items-center mb-8">
+                                <h3 className="font-bold text-xl text-white">编辑订单</h3>
+                                <button onClick={() => setShowEditModal(false)} className="p-2"><X size={24} className="text-white/40"/></button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 md:gap-5 mb-8">
+                                <input value={newOrder.recipientName} onChange={e => setNewOrder({...newOrder, recipientName: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="收件人"/>
+                                <input value={newOrder.phone} onChange={e => setNewOrder({...newOrder, phone: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="手机号"/>
+                                <input value={newOrder.product} onChange={e => setNewOrder({...newOrder, product: e.target.value})} className="col-span-2 w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="商品名称" />
+                                {/* 调整布局：单号和快递名称各占一半，方便手动修改 */}
+                                <input value={newOrder.trackingNumber} onChange={handleTrackingNumberChange} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="运单号"/>
+                                <input value={newOrder.courier} onChange={e => setNewOrder({...newOrder, courier: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="快递名称 (自动识别)"/>
+                            </div>
+                            <div className="flex gap-3 justify-end">
+                                <button onClick={handleSaveOrder} className="px-6 py-3 text-black rounded-lg font-bold active:scale-95 transition-transform" style={{ backgroundColor: apiSettings.themeColor }}>保存</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
                 {confirmModal && (<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4"><div className="bg-[#111] w-full max-w-sm rounded-2xl p-8 border border-white/10 shadow-2xl text-center animate-in zoom-in-95 duration-200"><AlertTriangle size={32} className="text-red-500 mx-auto mb-6"/><h3 className="text-xl font-bold text-white mb-2">{confirmModal.type === 'clear_all' ? '确定清空所有数据?' : '确认删除?'}</h3><div className="text-white/50 text-sm mb-6">{confirmModal.type === 'clear_all' ? '此操作将永久删除所有订单记录，且无法恢复！' : (confirmModal.type === 'batch' ? `您即将删除 ${confirmModal.count} 条记录。` : '此操作不可撤销。')}</div>{confirmModal.type === 'clear_all' && (<div className="mb-6"><input type="text" value={securityCodeInput} onChange={(e) => setSecurityCodeInput(e.target.value)} className="w-full h-12 bg-black border border-red-900/50 rounded-lg text-center text-red-500 font-mono text-sm tracking-widest placeholder-red-900/50 outline-none focus:border-red-500 transition-colors" placeholder="请输入安全码" autoFocus /></div>)}<div className="flex gap-3 mt-8"><button onClick={() => setConfirmModal(null)} className="flex-1 py-3 bg-white/5 text-white rounded-lg active:scale-95 transition-transform">取消</button><button onClick={executeDelete} className="flex-1 py-3 bg-red-600 text-white rounded-lg active:scale-95 transition-transform">{confirmModal.type === 'clear_all' ? '验证并清空' : '删除'}</button></div></div></div>)}
             </div>
         );
