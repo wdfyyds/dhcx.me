@@ -529,7 +529,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const THEME_PRESETS = [{ color: '#CCFF00', name: '酸性绿' }, { color: '#FF00FF', name: '霓虹粉' }, { color: '#00FFFF', name: '赛博蓝' }, { color: '#FF3300', name: '熔岩红' }, { color: '#9D00FF', name: '电子紫' }, { color: '#FFFFFF', name: '极简白' }];
-const COURIER_CODE_MAP = { '顺丰速运': 'SFEX', '顺丰': 'SFEX', '京东物流': 'JD', '京东': 'JD', '圆通速递': 'YTO', '圆通': 'YTO', '中通快递': 'ZTO', '中通': 'ZTO', '申通快递': 'STO', '申通': 'STO', '韵达快递': 'YD', '韵达': 'YD', '极兔速递': 'JTS', '极兔': 'JTS', 'EMS': 'EMS', '邮政包裹': 'PS', '邮政': 'PS', '德邦快递': 'DEPPON', '德邦': 'DEPPON', '通用快递': '' };
+const COURIER_CODE_MAP = { '顺丰速运': 'SF', '顺丰': 'SF', '京东物流': 'JD', '京东': 'JD', '圆通速递': 'YTO', '圆通': 'YTO', '中通快递': 'ZTO', '中通': 'ZTO', '申通快递': 'STO', '申通': 'STO', '韵达快递': 'YD', '韵达': 'YD', '极兔速递': 'JTS', '极兔': 'JTS', 'EMS': 'EMS', '邮政包裹': 'PS', '邮政': 'PS', '德邦快递': 'DEPPON', '德邦': 'DEPPON', '通用快递': '' };
 const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const STATUS_MAP = { "WAIT_ACCEPT": "待揽收", "ACCEPT": "已揽收", "TRANSPORT": "运输中", "DELIVERING": "派件中", "AGENT_SIGN": "已代签收", "SIGN": "已签收", "FAILED": "包裹异常", "RECEIVE": "接单中", "SEND_ON": "转单/转寄", "ARRIVE_CITY": "到达城市", "STA_INBOUND": "已入柜/站", "STA_SIGN": "从柜/站取出", "RETURN_SIGN": "退回签收", "REFUSE_SIGN": "拒收", "DELIVER_ABNORMAL": "派件异常", "RETENTION": "滞留件", "ISSUE": "问题件", "RETURN": "退回件", "DAMAGE": "破损", "CANCEL_ORDER": "揽件取消" };
 
@@ -1361,4 +1361,5 @@ export default function App() {
             <QrCodeModal show={qrCodeModal.show} onClose={() => setQrCodeModal({...qrCodeModal, show: false})} data={qrCodeModal} themeColor={apiSettings.themeColor} />
         </div>
     );
+
 }
