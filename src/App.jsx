@@ -299,68 +299,6 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
     );
 };
 
-// --- AI 核心逻辑 ---
-const AI_BRAIN = {
-    analyze: async (order, tracks) => {
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        const now = Date.now();
-        const oneDay = 24 * 60 * 60 * 1000;
-        let healthScore = 100;
-        let diagnosis = [];
-        let suggestions = [];
-        let tone = 'neutral';
-        const validTracks = Array.isArray(tracks) ? tracks.filter(t => t.time || t.ftime) : [];
-        const latest = validTracks.length > 0 ? validTracks[0] : null;
-        const lastUpdateTime = latest ? new Date(latest.time || latest.ftime).getTime() : order.timestamp;
-        const daysSinceUpdate = (now - lastUpdateTime) / oneDay;
-        const statusText = latest ? (latest.status || latest.context || latest.desc) : '未知';
-
-        if (!validTracks.length) {
-            healthScore = 50;
-            diagnosis.push("暂无物流轨迹数据");
-            suggestions.push("建议核实运单号是否正确或刚刚发货");
-        } else {
-            if (daysSinceUpdate > 7) {
-                healthScore -= 40;
-                diagnosis.push(`⚠️ 包裹已停滞 ${Math.floor(daysSinceUpdate)} 天`);
-                suggestions.push("建议立即联系快递公司查单");
-                tone = 'apologetic';
-            } else if (daysSinceUpdate > 3) {
-                healthScore -= 15;
-                diagnosis.push(`包裹超过 3 天未更新`);
-                suggestions.push("可能是中转站积压，建议安抚客户");
-            }
-            if (statusText.includes('拒收') || statusText.includes('退回') || statusText.includes('异常')) {
-                healthScore -= 50;
-                diagnosis.push("检测到异常状态（拒收/退回）");
-                tone = 'urgent';
-            } else if (statusText.includes('签收') || statusText.includes('代收')) {
-                healthScore = 100;
-                diagnosis.push("订单已顺利完成");
-                tone = 'happy';
-            } else if (statusText.includes('派件') || statusText.includes('派送')) {
-                diagnosis.push("正在派送中，预计今日送达");
-                tone = 'excited';
-            }
-        }
-
-        const replyOptions = [];
-        const baseInfo = `亲，您的订单（${order.trackingNumber}）`;
-        if (tone === 'apologetic') {
-            replyOptions.push({ label: "安抚客户", text: `${baseInfo}目前物流稍有滞留，我们已经向快递公司发起了催促，请您再耐心等待一下，有最新进展我会第一时间通知您！🙏` });
-        } else if (tone === 'urgent') {
-            replyOptions.push({ label: "异常处理", text: `${baseInfo}显示状态异常，我这边正在帮您核实具体情况，请稍等，处理结果会尽快反馈给您。` });
-        } else if (tone === 'happy') {
-             replyOptions.push({ label: "求好评", text: `${baseInfo}已经显示签收啦！如果您对宝贝满意的话，麻烦给个好评支持一下哦，祝您生活愉快！❤️` });
-        } else {
-            replyOptions.push({ label: "常规回复", text: `${baseInfo}目前正在正常运输中，最新状态：${statusText}。请您放心，我们会持续关注物流动态。` });
-        }
-        replyOptions.push({ label: "精简通知", text: `您的快递 ${order.courier} ${order.trackingNumber} 最新动态：${statusText}` });
-
-        return { score: Math.max(0, healthScore), diagnosis, suggestions, replyOptions, lastUpdate: daysSinceUpdate };
-    }
-};
-
 // --- 数据服务层 ---
 const DataService = {
     getOrCreateShortLink: async (queryText) => {
@@ -658,50 +596,6 @@ const AcidBackground = ({ themeColor, mode = 'default', lowPowerMode = false }) 
     );
 };
 
-// --- AI Modal ---
-const AIAnalysisModal = ({ show, onClose, order, analysis, loading, themeColor }) => {
-    if (!show) return null;
-    const copyReply = async (text) => {
-        try { await navigator.clipboard.writeText(text); alert("回复话术已复制！"); } catch(e) { alert("复制失败，请手动复制"); }
-    };
-    return (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4 animate-in fade-in duration-300">
-            <div className="w-full max-w-lg bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 via-cyan-500 to-purple-500 animate-gradient-x"></div>
-                <div className="absolute -top-20 -right-20 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl"></div>
-                <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl"></div>
-                <div className="p-6 border-b border-white/5 relative z-10 flex justify-between items-center bg-white/[0.02]">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center border border-white/10 shadow-inner"><Brain size={20} className="text-cyan-400" /></div>
-                        <div><h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">DHCX AI Brain<span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50 font-mono">BETA</span></h3><p className="text-xs text-white/40 font-mono">智能物流分析引擎</p></div>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors"><X size={20} /></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 relative z-10 custom-scrollbar">
-                    {loading ? (
-                        <div className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                            <div className="relative"><Cpu size={48} className="text-white/20 animate-pulse" /><div className="absolute inset-0 flex items-center justify-center"><div className="w-full h-full absolute animate-ping rounded-full bg-cyan-500/20"></div></div></div>
-                            <div className="text-sm font-mono text-cyan-400 animate-pulse">正在分析物流轨迹...</div>
-                            <div className="text-xs text-white/30">计算时效 · 检测异常 · 生成话术</div>
-                        </div>
-                    ) : (
-                        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-                            <div className="bg-white/5 rounded-xl p-5 border border-white/5 flex items-center justify-between">
-                                <div><div className="text-xs text-white/40 uppercase tracking-widest mb-1">物流健康度</div><div className={`text-3xl font-black ${analysis.score > 80 ? 'text-[#CCFF00]' : (analysis.score > 50 ? 'text-orange-400' : 'text-red-500')}`}>{analysis.score}<span className="text-sm text-white/20 ml-1">/ 100</span></div></div>
-                                <div className="h-12 w-px bg-white/10 mx-4"></div>
-                                <div className="flex-1"><div className="flex flex-wrap gap-2">{analysis.diagnosis.map((diag, i) => (<div key={i} className="text-xs px-2 py-1 rounded bg-white/5 text-white/80 border border-white/10 flex items-center gap-1.5"><div className={`w-1.5 h-1.5 rounded-full ${diag.includes('异常') || diag.includes('停滞') ? 'bg-red-500' : 'bg-[#CCFF00]'}`}></div>{diag}</div>))}</div></div>
-                            </div>
-                            <div><h4 className="text-xs font-bold text-white/40 uppercase mb-3 flex items-center gap-2"><SparklesIcon size={12} className="text-purple-400" /> 智能建议</h4><div className="space-y-2">{analysis.suggestions.map((sug, i) => (<div key={i} className="text-sm text-white/70 flex gap-2 items-start bg-purple-500/5 p-3 rounded-lg border border-purple-500/10"><ArrowRight size={14} className="mt-0.5 text-purple-400 shrink-0" />{sug}</div>))}</div></div>
-                            <div><h4 className="text-xs font-bold text-white/40 uppercase mb-3 flex items-center gap-2"><MessageSquare size={12} className="text-cyan-400" /> 客服话术生成</h4><div className="grid gap-3">{analysis.replyOptions.map((opt, i) => (<div key={i} className="bg-black/40 border border-white/10 rounded-xl p-4 hover:border-cyan-500/30 transition-colors group"><div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-cyan-400 px-2 py-0.5 rounded bg-cyan-900/20 border border-cyan-500/20">{opt.label}</span><button onClick={() => copyReply(opt.text)} className="text-xs flex items-center gap-1 text-white/40 hover:text-white transition-colors"><Copy size={12} /> 复制</button></div><p className="text-xs text-white/60 leading-relaxed font-mono select-all">{opt.text}</p></div>))}</div></div>
-                        </div>
-                    )}
-                </div>
-                 {!loading && (<div className="p-4 border-t border-white/5 bg-white/[0.02] text-center"><p className="text-[10px] text-white/20 font-mono">Generated by DHCX AI Engine · 仅供参考</p></div>)}
-            </div>
-        </div>
-    );
-};
-
 const getSimplifiedStatus = (apiStatus) => {
     if (!apiStatus) return '待揽收';
     const s = String(apiStatus).toUpperCase();
@@ -802,7 +696,6 @@ export default function App() {
     const [isSaving, setIsSaving] = useState(false); 
     const [isImporting, setIsImporting] = useState(false);
     const [isDeduplicating, setIsDeduplicating] = useState(false);
-    const [aiModal, setAiModal] = useState({ show: false, order: null, analysis: null, loading: false });
     const [lowPowerMode, setLowPowerMode] = useState(() => { try { return localStorage.getItem('dhcx_low_power_mode') === 'true'; } catch (e) { return false; } });
     const [apiSettings, setApiSettings] = useState(DEFAULT_SETTINGS);
     const [newOrder, setNewOrder] = useState({ recipientName: '', phone: '', product: '', trackingNumber: '', courier: '顺丰速运', note: '' });
@@ -1068,12 +961,6 @@ export default function App() {
     };
 
     const handleShowLogistics = (order) => { setViewingLogisticsOrder(order); fetchLogistics(order); };
-    const handleAIAnalysis = async (order) => {
-        setAiModal({ show: true, order, analysis: null, loading: true });
-        let tracks = logisticsDataCache[order.id]?.data; if (!tracks) try { tracks = []; } catch(e) {}
-        const result = await AI_BRAIN.analyze(order, tracks);
-        setAiModal({ show: true, order, analysis: result, loading: false });
-    };
     
     // ... (Render logic) ...
     if (currentView === 'login') {
@@ -1098,7 +985,7 @@ export default function App() {
         return (
             <div className="min-h-screen min-h-[100dvh] bg-[#050505] text-white font-sans flex flex-col md:flex-row relative overflow-hidden">
                 <NoiseOverlay /><ClickEffects themeColor={apiSettings.themeColor} />{toast && <Toast message={toast.message} type={toast.type} />}
-                <AIAnalysisModal show={aiModal.show} onClose={() => setAiModal({ ...aiModal, show: false })} order={aiModal.order} analysis={aiModal.analysis} loading={aiModal.loading} themeColor={apiSettings.themeColor} />
+                
                 <div className="hidden md:flex w-64 bg-black/50 backdrop-blur-xl border-r border-white/5 flex-col z-10">
                     <div className="h-20 flex items-center px-6 border-b border-white/5 gap-3"><div className="w-8 h-8 rounded flex items-center justify-center text-black font-bold" style={{ backgroundColor: apiSettings.themeColor }}><Package size={18}/></div><span className="font-black tracking-tighter text-lg">后台管理</span></div>
                     <nav className="flex-1 p-4 space-y-2">{[['dashboard','数据统计',BarChart2], ['list','订单管理',List], ['settings','系统设置',Settings]].map(([key, label, Icon]) => (<button key={key} onClick={() => { setAdminViewMode(key); }} className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all ${adminViewMode===key ? 'bg-white/10 text-white border border-white/10' : 'text-white/40 hover:text-white hover:bg-white/5'}`}><Icon size={18} style={{ color: adminViewMode===key ? apiSettings.themeColor : 'currentColor' }}/> {label}</button>))}</nav>
@@ -1151,7 +1038,6 @@ export default function App() {
                                                     <td className="p-4"><div className="font-mono text-[10px] text-white/30 select-all">{isAdminMasked && order.trackingNumber ? order.trackingNumber.slice(0,5) + '******' + order.trackingNumber.slice(-4) : order.trackingNumber}</div></td>
                                                     <td className="p-4 text-center"><div className="flex items-center justify-center gap-2">
                                                         <button onClick={() => handleShowLogistics(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg" title="手动查询"><MapPin size={14}/></button>
-                                                        <button onClick={() => handleAIAnalysis(order)} className="p-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-lg" title="AI 智能分析"><SparklesIcon size={14}/></button>
                                                         <button onClick={() => handleQuickCopyReply(order)} className="p-2 bg-white/5 hover:bg-white/10 text-[#CCFF00] rounded-lg"><MessageSquare size={14}/></button>
                                                         <button onClick={() => handleShowQrCode(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg"><QrCode size={14}/></button>
                                                         <button onClick={() => handleEditOrderClick(order)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg"><Edit size={14}/></button>
@@ -1170,11 +1056,9 @@ export default function App() {
                                                 <div><div className="flex items-center gap-2"><div className="text-white font-bold">{isAdminMasked ? (order.recipientName?.[0] + '*'.repeat(Math.max(0, (order.recipientName?.length || 0) - 1))) : order.recipientName}</div><div className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.bg} ${STATUS_STYLES[getSimplifiedStatus(order.lastApiStatus)]?.color}`}>{getSimplifiedStatus(order.lastApiStatus)}</div></div><div onClick={() => handleEditOrderClick(order)} className="text-xs text-white/40 mt-1 cursor-pointer hover:text-white">{order.product}</div></div>
                                                 <div className="text-right"><div className="text-xs font-mono text-white/60">{isAdminMasked && order.trackingNumber ? order.trackingNumber.slice(0,5) + '******' + order.trackingNumber.slice(-4) : order.trackingNumber}</div><div className="text-[10px] text-white/30 mt-1">{order.courier}</div></div>
                                             </div>
-                                            <div className="grid grid-cols-6 gap-2 border-t border-white/5 pt-3 mt-1">
+                                            <div className="grid grid-cols-5 gap-2 border-t border-white/5 pt-3 mt-1">
                                                 <button onClick={() => handleShowLogistics(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10"><MapPin size={16}/> <span className="text-[10px]">轨迹</span></button>
-                                                <button onClick={() => handleAIAnalysis(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"><SparklesIcon size={16}/> <span className="text-[10px]">AI</span></button>
                                                 <button onClick={() => handleQuickCopyReply(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-[#CCFF00] hover:bg-white/10"><MessageSquare size={16}/> <span className="text-[10px]">话术</span></button>
-                                                {/* 修改处：将扫码按钮改为卡片生成按钮 */}
                                                 <button onClick={() => handleShowQrCode(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10"><ImageDown size={16}/> <span className="text-[10px]">卡片</span></button>
                                                 <button onClick={() => handleEditOrderClick(order)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10"><Edit size={16}/> <span className="text-[10px]">编辑</span></button>
                                                 <button onClick={() => handleDeleteOrderClick(order.id)} className="flex flex-col items-center justify-center gap-1 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 size={16}/> <span className="text-[10px]">删除</span></button>
