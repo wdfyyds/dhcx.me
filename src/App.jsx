@@ -529,7 +529,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const THEME_PRESETS = [{ color: '#CCFF00', name: '酸性绿' }, { color: '#FF00FF', name: '霓虹粉' }, { color: '#00FFFF', name: '赛博蓝' }, { color: '#FF3300', name: '熔岩红' }, { color: '#9D00FF', name: '电子紫' }, { color: '#FFFFFF', name: '极简白' }];
-const COURIER_CODE_MAP = { '顺丰速运': 'SF', '顺丰': 'SF', '京东物流': 'JD', '京东': 'JD', '圆通速递': 'YTO', '圆通': 'YTO', '中通快递': 'ZTO', '中通': 'ZTO', '申通快递': 'STO', '申通': 'STO', '韵达快递': 'YD', '韵达': 'YD', '极兔速递': 'JTS', '极兔': 'JTS', 'EMS': 'EMS', '邮政包裹': 'PS', '邮政': 'PS', '德邦快递': 'DEPPON', '德邦': 'DEPPON', '通用快递': '' };
+const COURIER_CODE_MAP = { '顺丰速运': 'SFEX', '顺丰': 'SFEX', '京东物流': 'JD', '京东': 'JD', '圆通速递': 'YTO', '圆通': 'YTO', '中通快递': 'ZTO', '中通': 'ZTO', '申通快递': 'STO', '申通': 'STO', '韵达快递': 'YD', '韵达': 'YD', '极兔速递': 'JTS', '极兔': 'JTS', 'EMS': 'EMS', '邮政包裹': 'PS', '邮政': 'PS', '德邦快递': 'DEPPON', '德邦': 'DEPPON', '通用快递': '' };
 const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const STATUS_MAP = { "WAIT_ACCEPT": "待揽收", "ACCEPT": "已揽收", "TRANSPORT": "运输中", "DELIVERING": "派件中", "AGENT_SIGN": "已代签收", "SIGN": "已签收", "FAILED": "包裹异常", "RECEIVE": "接单中", "SEND_ON": "转单/转寄", "ARRIVE_CITY": "到达城市", "STA_INBOUND": "已入柜/站", "STA_SIGN": "从柜/站取出", "RETURN_SIGN": "退回签收", "REFUSE_SIGN": "拒收", "DELIVER_ABNORMAL": "派件异常", "RETENTION": "滞留件", "ISSUE": "问题件", "RETURN": "退回件", "DAMAGE": "破损", "CANCEL_ORDER": "揽件取消" };
 
@@ -1255,10 +1255,10 @@ export default function App() {
 
                 {showImportModal && (
                     <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
-                        <div className="bg-[#111] w-full max-w-lg rounded-2xl p-6 md:p-8 border border-white/10 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="bg-[#111] w-full max-w-3xl rounded-2xl p-6 md:p-8 border border-white/10 shadow-2xl animate-in zoom-in-95 duration-200">
                             <div className="flex justify-between items-center mb-6"><h3 className="font-bold text-xl text-white">批量导入</h3><button onClick={()=>setShowImportModal(false)} className="text-white/40 hover:text-white p-2"><X size={24}/></button></div>
                             <div className="mb-6 p-4 border border-dashed border-white/20 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] transition-colors relative group"><input type="file" accept=".csv,.txt,.xls,.xlsx" onChange={handleImportFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/><div className="flex flex-col items-center justify-center py-4 text-center"><FileSpreadsheet size={32} className="text-white/40 mb-3 group-hover:text-white transition-colors"/><p className="text-sm font-bold text-white mb-1">上传 Excel / CSV</p><p className="text-[10px] font-mono text-white/30">点击或拖拽上传</p></div></div>
-                            <textarea value={importText} onChange={e=>setImportText(e.target.value)} className="w-full h-40 bg-black border border-white/10 rounded-xl p-4 text-xs text-white/70 mb-6" placeholder="或者直接粘贴文本数据..." />
+                            <textarea value={importText} onChange={e=>setImportText(e.target.value)} className="w-full h-64 bg-black border border-white/10 rounded-xl p-4 text-xs text-white/70 mb-6 font-mono leading-relaxed" placeholder="或者直接粘贴文本数据..." />
                             <div className="flex gap-3">
                                 <button onClick={()=>setShowImportModal(false)} disabled={isImporting} className="flex-1 py-3 bg-white/5 text-white/60 rounded-lg text-xs font-bold hover:bg-white/10 disabled:opacity-50">取消</button>
                                 <button onClick={handleBatchImport} disabled={isImporting} className={`flex-1 py-3 text-black rounded-lg text-xs font-bold hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 ${isImporting ? 'opacity-70 cursor-not-allowed' : ''}`} style={{ backgroundColor: apiSettings.themeColor }}>{isImporting ? (<><RefreshCw size={14} className="animate-spin"/><span>正在处理...</span></>) : ("处理数据")}</button>
@@ -1361,5 +1361,4 @@ export default function App() {
             <QrCodeModal show={qrCodeModal.show} onClose={() => setQrCodeModal({...qrCodeModal, show: false})} data={qrCodeModal} themeColor={apiSettings.themeColor} />
         </div>
     );
-
 }
