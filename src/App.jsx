@@ -61,7 +61,6 @@ const initSupabase = async () => {
          return supabase;
     }
     try {
-        // 修复了这里的 URL 格式，移除了多余的 Markdown 标记
         const sb = await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', 'supabase');
         if (sb && sb.createClient) {
             supabase = sb.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -70,13 +69,12 @@ const initSupabase = async () => {
     return supabase;
 };
 
-// --- [组件] 二维码卡片弹窗 (集成 html-to-image 修复版) ---
+// --- [组件] 二维码卡片弹窗 ---
 const QrCodeModal = ({ show, onClose, data, themeColor }) => {
     const cardRef = useRef(null);
     const [isSaving, setIsSaving] = useState(false);
     const [previewUrl, setPreviewUrl] = useState(null);
 
-    // 每次弹窗打开时重置预览状态
     useEffect(() => {
         if (!show) setPreviewUrl(null);
     }, [show]);
@@ -86,16 +84,12 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
     const handleDownloadImage = async () => {
         setIsSaving(true);
         try {
-            // 动态加载 html-to-image
             if (!window.htmlToImage) {
-                // 修复了这里的 URL 格式
                 await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js', 'htmlToImage');
             }
 
             const element = cardRef.current;
             if (!element) return;
-
-            // 给一点时间让浏览器渲染完全，确保字体加载
             await new Promise(resolve => setTimeout(resolve, 100));
 
             const filter = (node) => {
@@ -103,38 +97,24 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
             };
 
             const options = {
-                quality: 1.0, // 提升质量到最高
-                backgroundColor: null, // <--- 修改处：设为null以保持透明背景，防止圆角变方角
-                cacheBust: true, // 防止缓存导致的跨域问题
-                skipAutoScale: true, // 防止移动端自动缩放导致的偏移
+                quality: 1.0, 
+                backgroundColor: null, 
+                cacheBust: true, 
+                skipAutoScale: true, 
                 filter: filter
             };
 
             let dataUrl;
             try {
-                // 优先尝试 3倍图 (超高清)
-                dataUrl = await window.htmlToImage.toPng(element, { 
-                    ...options, 
-                    pixelRatio: 3 
-                });
+                dataUrl = await window.htmlToImage.toPng(element, { ...options, pixelRatio: 3 });
             } catch (highResError) {
                 console.warn('3x capture failed, falling back to 2x', highResError);
-                // 如果3倍图在部分 iOS 设备内存溢出，回退到 2倍图
-                dataUrl = await window.htmlToImage.toPng(element, { 
-                    ...options, 
-                    pixelRatio: 2 
-                });
+                dataUrl = await window.htmlToImage.toPng(element, { ...options, pixelRatio: 2 });
             }
 
-            setPreviewUrl(dataUrl); // 设置预览图片，供手机端长按保存
-
-            // 移除自动下载逻辑，仅展示预览图
-            // const isMobile = ...
-            // if (!isMobile) { ... }
-
+            setPreviewUrl(dataUrl); 
         } catch (error) {
             console.error('截图生成失败:', error);
-            // 最后的保底重试
             try {
                  await new Promise(resolve => setTimeout(resolve, 500));
                  const element = cardRef.current;
@@ -150,7 +130,6 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
         }
     };
 
-    // 如果生成了预览图，显示预览层（覆盖在原卡片上）
     if (previewUrl) {
         return (
             <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/95 backdrop-blur-md p-6" onClick={() => setPreviewUrl(null)}>
@@ -168,7 +147,7 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
                         alt="Long press or Right Click to Copy" 
                         className="w-full rounded-3xl shadow-2xl border border-white/10 select-none touch-auto" 
                         onClick={e => e.stopPropagation()} 
-                        style={{ WebkitTouchCallout: 'default' }} // 允许 iOS 长按菜单
+                        style={{ WebkitTouchCallout: 'default' }} 
                     />
                     
                     <div className="flex gap-3 w-full">
@@ -190,21 +169,12 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
         );
     }
 
-    // 默认编辑/查看模式
     return (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6" onClick={onClose}>
             <div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-300 w-full max-w-[300px]">
-                {/* 卡片主体 - 稍微调小了 max-width 使其更紧凑 */}
-                <div 
-                    ref={cardRef}
-                    className="w-full relative overflow-hidden bg-white rounded-3xl shadow-2xl antialiased" 
-                    onClick={e => e.stopPropagation()}
-                >
-                    {/* 顶部装饰条 */}
+                <div ref={cardRef} className="w-full relative overflow-hidden bg-white rounded-3xl shadow-2xl antialiased" onClick={e => e.stopPropagation()}>
                     <div className="h-1.5 w-full" style={{ backgroundColor: themeColor }}></div>
-
                     <div className="p-5 pb-2 relative z-10">
-                        {/* Header */}
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <h1 className="text-2xl font-black italic tracking-tighter text-black leading-none" style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}>
@@ -212,15 +182,12 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
                                 </h1>
                                 <p className="text-[8px] font-mono text-gray-400 tracking-[0.2em] mt-1">LOGISTICS SERVICE</p>
                             </div>
-                            
                             <div className="bg-black text-white px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
                                 <ShieldCheck size={9} className="opacity-70" />
                                 <span className="text-[9px] font-bold tracking-wider">内部查询通道</span>
                             </div>
                         </div>
-                        
                         <div className="border-t-2 border-black mb-5"></div>
-                        
                         <div className="space-y-5">
                             <div className="flex justify-between items-baseline">
                                 <div>
@@ -232,14 +199,12 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
                                     <div className="text-sm font-black text-black font-mono">{data.info?.courier}</div>
                                 </div>
                             </div>
-
                             <div>
                                 <div className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">ITEM / 商品</div>
                                 <div className="text-xs font-bold text-black break-words leading-relaxed border-l-2 pl-2" style={{ borderColor: themeColor }}>
                                     {data.info?.product}
                                 </div>
                             </div>
-
                             <div className="bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
                                 <div className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">TRACKING NO. / 单号</div>
                                 <div className="font-mono text-lg font-black text-black tracking-tight break-all leading-none">
@@ -248,15 +213,11 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
                             </div>
                         </div>
                     </div>
-
-                    {/* Cutout Divider */}
                     <div className="relative w-full h-5 flex items-center justify-center mt-2">
                         <div className="absolute left-[-6px] w-3 h-3 rounded-full bg-[#111] z-10"></div> 
                         <div className="absolute right-[-6px] w-3 h-3 rounded-full bg-[#111] z-10"></div>
                         <div className="w-full border-t border-dashed border-gray-300 mx-4"></div>
                     </div>
-
-                    {/* Footer Section */}
                     <div className="p-5 pt-1 bg-white flex flex-col items-center">
                         <div className="flex gap-3 items-center w-full">
                             <div className="w-16 h-16 bg-white p-1 rounded-lg border border-black/5 shadow-sm shrink-0">
@@ -269,24 +230,16 @@ const QrCodeModal = ({ show, onClose, data, themeColor }) => {
                             <div className="flex-1 flex flex-col justify-center h-16">
                                 <div className="text-[10px] font-bold text-black mb-0.5">长按识别查看进度</div>
                                 <div className="text-[9px] text-gray-400 leading-tight transform scale-95 origin-left">微信内长按图片识别二维码<br/>即可查看实时物流</div>
-                                {/* Decorative bar */}
                                 <div className="h-2 w-24 mt-1.5 opacity-20" style={{ backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAABZJREFUeNpi2r9//38gYGAEESAAEGAAGRgE+bRsBPwAAAAASUVORK5CYII=")`, backgroundRepeat: 'repeat' }}></div>
                             </div>
                         </div>
-                        
                         <div className="mt-4 text-[8px] font-mono text-gray-300 w-full text-center">
                             ISSUED BY DHCX SYSTEM · NO.{new Date().toISOString().slice(0,10).replace(/-/g,'')}
                         </div>
                     </div>
                 </div>
-
-                {/* 操作栏 (截图时不包含) */}
                 <div className="flex gap-3 w-full" onClick={e => e.stopPropagation()}>
-                    <button 
-                        onClick={handleDownloadImage}
-                        disabled={isSaving || data.loading}
-                        className="flex-1 bg-white hover:bg-gray-100 text-black py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 shadow-lg"
-                    >
+                    <button onClick={handleDownloadImage} disabled={isSaving || data.loading} className="flex-1 bg-white hover:bg-gray-100 text-black py-3 rounded-full font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 shadow-lg">
                         {isSaving ? <RefreshCw size={16} className="animate-spin"/> : <ImageDown size={16}/>}
                         {isSaving ? "生成中..." : "生成卡片"}
                     </button>
@@ -361,6 +314,24 @@ const DataService = {
         const { data, error } = await supabase.from('orders').upsert(orders);
         if (error) throw error;
         return data;
+    },
+    // --- 新增：检查数据库中是否已存在指定的单号集合 ---
+    checkExistingOrders: async (ids) => {
+        if (!supabase) throw new Error("数据库未连接");
+        const existingIds = new Set();
+        if (!ids || ids.length === 0) return existingIds;
+        
+        // Supabase / PostgREST 的 in 查询对 URL 长度有限制，为安全起见每 200 个分批查询
+        const BATCH_SIZE = 200;
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+            const chunk = ids.slice(i, i + BATCH_SIZE);
+            const { data, error } = await supabase.from('orders').select('id').in('id', chunk);
+            if (error) throw error;
+            if (data) {
+                data.forEach(item => existingIds.add(item.id));
+            }
+        }
+        return existingIds;
     },
     deleteOrders: async (ids) => {
         if (!supabase) throw new Error("数据库未连接");
@@ -468,10 +439,8 @@ const DEFAULT_SETTINGS = {
 
 const THEME_PRESETS = [{ color: '#CCFF00', name: '酸性绿' }, { color: '#FF00FF', name: '霓虹粉' }, { color: '#00FFFF', name: '赛博蓝' }, { color: '#FF3300', name: '熔岩红' }, { color: '#9D00FF', name: '电子紫' }, { color: '#FFFFFF', name: '极简白' }];
 const COURIER_CODE_MAP = { '顺丰速运': 'SFEX', '顺丰': 'SFEX', '京东物流': 'JD', '京东': 'JD', '圆通速递': 'YTO', '圆通': 'YTO', '中通快递': 'ZTO', '中通': 'ZTO', '申通快递': 'STO', '申通': 'STO', '韵达快递': 'YD', '韵达': 'YD', '极兔速递': 'JTS', '极兔': 'JTS', 'EMS': 'EMS', '邮政包裹': 'PS', '邮政': 'PS', '德邦快递': 'DEPPON', '德邦': 'DEPPON', '通用快递': '' };
-const BASE62_CHARS = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const STATUS_MAP = { "WAIT_ACCEPT": "待揽收", "ACCEPT": "已揽收", "TRANSPORT": "运输中", "DELIVERING": "派件中", "AGENT_SIGN": "已代签收", "SIGN": "已签收", "FAILED": "包裹异常", "RECEIVE": "接单中", "SEND_ON": "转单/转寄", "ARRIVE_CITY": "到达城市", "STA_INBOUND": "已入柜/站", "STA_SIGN": "从柜/站取出", "RETURN_SIGN": "退回签收", "REFUSE_SIGN": "拒收", "DELIVER_ABNORMAL": "派件异常", "RETENTION": "滞留件", "ISSUE": "问题件", "RETURN": "退回件", "DAMAGE": "破损", "CANCEL_ORDER": "揽件取消" };
 
-// --- Visual Components ---
 const IllusPlane=({className})=>(<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M10 50 L40 50 L55 20 L65 50 L90 50 L70 70 L80 90 L50 75 L20 90 L30 70 Z"/><path d="M55 20 L50 75" opacity="0.5"/><path d="M10 50 L50 75 L90 50" opacity="0.5"/><path d="M50 90 L50 50"/><path d="M30 40 L70 20" opacity="0.5" strokeDasharray="5 5"/></svg>);
 const IllusTruck=({className})=>(<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="10" y="30" width="50" height="40" rx="5"/><path d="M60 30 L80 30 L90 50 L90 70 L60 70 Z"/><circle cx="25" cy="70" r="10"/><circle cx="75" cy="70" r="10"/><path d="M10 45 L60 45" opacity="0.5"/><path d="M5 30 L-5 30 M5 40 L-5 40 M5 50 L-5 50" strokeWidth="3" opacity="0.6"/></svg>);
 const IllusPackage=({className})=>(<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M50 10 L90 30 L90 70 L50 90 L10 70 L10 30 Z"/><path d="M10 30 L50 50 L90 30"/><path d="M50 90 L50 50"/><path d="M30 40 L70 20" opacity="0.5" strokeDasharray="5 5"/></svg>);
@@ -620,22 +589,17 @@ const formatLogisticsTime = (val) => {
 const parseLogisticsDate = (val) => { if (!val) return new Date(0); const formatted = formatLogisticsTime(val); let parseStr = formatted.replace(/-/g, '/'); if (!/^\d{4}/.test(parseStr)) parseStr = `${new Date().getFullYear()}/${parseStr}`; const date = new Date(parseStr); return isNaN(date.getTime()) ? new Date(0) : date; };
 const translateStatus = (code) => STATUS_MAP[code] || code;
 
-// --- 修复: 调整申通快递判断顺序，防止被中通(7开头)误判 ---
 const autoDetectCourier = (number) => { 
     if (!number) return '通用快递'; 
     const n = String(number).toUpperCase(); 
     if (n.startsWith('SF')) return '顺丰速运'; 
     if (n.startsWith('JD')) return '京东物流'; 
     if (n.startsWith('YT') || n.startsWith('8')) return '圆通速递'; 
-    
-    // 将申通判断提前到中通之前
     if (n.startsWith('STO') || n.startsWith('77')) return '申通快递'; 
     if (n.startsWith('ZTO') || n.startsWith('7') || n.startsWith('6')) return '中通快递'; 
-    
     if (n.startsWith('YD') || n.startsWith('3') || n.startsWith('4')) return '韵达速递'; 
     if (n.startsWith('JTS')) return '极兔速递'; 
     if (n.startsWith('EMS') || n.startsWith('E')) return 'EMS'; 
-    
     return '通用快递'; 
 };
 
@@ -683,11 +647,9 @@ export default function App() {
     const [showImportModal, setShowImportModal] = useState(false);
     const [qrCodeModal, setQrCodeModal] = useState({ show: false, url: '', title: '', info: null, loading: false });
     const [importText, setImportText] = useState(''); 
-    const [importMode, setImportMode] = useState('append');
     const [adminUsername, setAdminUsername] = useState(''); 
     const [adminPassword, setAdminPassword] = useState('');
     const [isNameMasked, setIsNameMasked] = useState(true); 
-    const [showAppCode, setShowAppCode] = useState(false);
     const [isAdminMasked, setIsAdminMasked] = useState(true);
     const [easterEggMode, setEasterEggMode] = useState(null); 
     const [secretClickCount, setSecretClickCount] = useState(0);
@@ -773,7 +735,6 @@ export default function App() {
     const [visitStats, setVisitStats] = useState({ pv: 0, uv: 0 });
     useEffect(() => { if (currentView !== 'search') return; const today = new Date().toISOString().slice(0, 10); const statsKey = `dhcx_stats_${today}`; let stats = JSON.parse(localStorage.getItem(statsKey) || '{"pv":0, "ips":[]}'); const sessionId = sessionStorage.getItem('dhcx_session_id') || crypto.randomUUID(); sessionStorage.setItem('dhcx_session_id', sessionId); stats.pv += 1; if (!stats.ips.includes(sessionId)) stats.ips.push(sessionId); localStorage.setItem(statsKey, JSON.stringify(stats)); setVisitStats({ pv: stats.pv, uv: stats.ips.length }); }, [currentView]);
 
-    const saveSettingsToLocal = useCallback((newSettings) => { setApiSettings(newSettings); localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(newSettings)); }, []);
     const saveApiSettings = async () => { if (!isAdmin) { showToast("无权限保存", "error"); return; } setIsSaving(true); try { await DataService.saveSiteConfig(apiSettings); localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(apiSettings)); showToast("配置已同步至全站！"); setTimeout(() => { setCurrentView('search'); }, 1000); } catch (e) { showToast("保存失败: " + String(e.message), "error"); } finally { setIsSaving(false); } };
     
     const handleLogoUpload = (e) => {
@@ -788,6 +749,7 @@ export default function App() {
 
     const handleImportFileChange = async (e) => { const file = e.target.files[0]; if (!file) return; if (file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx')) { showToast("正在加载 Excel 解析引擎...", "success"); try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX'); const reader = new FileReader(); reader.onload = (event) => { const data = new Uint8Array(event.target.result); const workbook = window.XLSX.read(data, { type: 'array', cellDates: true }); const text = window.XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]], { FS: " " }); setImportText(text); showToast(`Excel 解析成功！${text.split('\n').length} 行`, "success"); }; reader.readAsArrayBuffer(file); } catch (err) { showToast("解析引擎加载失败", "error"); } return; } const reader = new FileReader(); reader.onload = (event) => { setImportText(event.target.result); showToast("文件读取成功", "success"); }; reader.readAsText(file); };
     
+    // --- 升级版批量导入逻辑 (包含防重复检测) ---
     const handleBatchImport = async () => {
         if (!importText || !importText.trim()) { showToast("请粘贴或上传文件！", "error"); return; }
         setIsImporting(true); await new Promise(resolve => setTimeout(resolve, 100));
@@ -810,13 +772,48 @@ export default function App() {
                 } 
             });
             if (newOrdersData.length > 0) { 
+                // 1. 本次解析出的数据去重 (避免当前文本内就有重复单号)
                 const uniqueMap = new Map(); newOrdersData.forEach(item => { if (item.id) uniqueMap.set(item.id, item); });
                 const uniqueOrdersData = Array.from(uniqueMap.values());
-                const removedCount = newOrdersData.length - uniqueOrdersData.length;
-                await DataService.batchSaveOrders(uniqueOrdersData);
-                let msg = `成功处理 ${uniqueOrdersData.length} 条数据！`;
-                if (removedCount > 0) msg += ` (自动过滤了 ${removedCount} 条本次重复数据)`;
-                showToast(msg); setImportText(''); setShowImportModal(false); fetchAdminOrders(); 
+                const currentBatchRemovedCount = newOrdersData.length - uniqueOrdersData.length;
+
+                // 2. 数据库级防重复：查询要导入的单号，哪些在库里已经有了
+                const batchIds = uniqueOrdersData.map(item => item.id);
+                const existingIdsInDb = await DataService.checkExistingOrders(batchIds);
+                
+                // 3. 过滤出真正全新的订单
+                const trulyNewOrdersData = uniqueOrdersData.filter(item => !existingIdsInDb.has(item.id));
+                const dbSkippedCount = uniqueOrdersData.length - trulyNewOrdersData.length;
+
+                // --- 新增：弹窗拦截提示逻辑 ---
+                if (dbSkippedCount > 0) {
+                    const duplicateSamples = Array.from(existingIdsInDb).slice(0, 3).join(', ');
+                    const suffix = existingIdsInDb.size > 3 ? '...' : '';
+                    
+                    if (trulyNewOrdersData.length === 0) {
+                        window.alert(`⚠️ 导入终止！\n\n您试图导入的数据中，共 ${dbSkippedCount} 个单号在系统中已全部存在（例如: ${duplicateSamples}${suffix}）。未执行任何新导入。`);
+                        setIsImporting(false);
+                        return;
+                    } else {
+                        const confirmMsg = `⚠️ 检测到重复单号！\n\n系统已存在 ${dbSkippedCount} 个您试图导入的单号（例如: ${duplicateSamples}${suffix}）。\n\n点击【确定】将跳过这些重复项，仅导入剩余的 ${trulyNewOrdersData.length} 个全新单号。`;
+                        if (!window.confirm(confirmMsg)) {
+                            setIsImporting(false);
+                            return; // 用户点击取消，终止导入
+                        }
+                    }
+                }
+
+                if (trulyNewOrdersData.length > 0) {
+                    await DataService.batchSaveOrders(trulyNewOrdersData);
+                }
+
+                // 4. 组装提示信息
+                let msg = `成功导入 ${trulyNewOrdersData.length} 条新数据！`;
+                if (currentBatchRemovedCount > 0 || dbSkippedCount > 0) {
+                    msg += ` (自动跳过: 本次文本自身重复 ${currentBatchRemovedCount} 条, 系统已存在 ${dbSkippedCount} 条)`;
+                }
+                showToast(msg, "success");
+                setImportText(''); setShowImportModal(false); fetchAdminOrders(); 
             } else { showToast("未识别到有效数据", "error"); }
         } catch (e) { showToast("导入失败: " + String(e.message), "error"); } finally { setIsImporting(false); }
     };
@@ -891,7 +888,6 @@ export default function App() {
         
         let tracks = logisticsDataCache[order.id]?.data || [];
         
-        // Attempt to fetch fresh data
         try {
             let courierCode = COURIER_CODE_MAP[order.courier];
             if (!courierCode && order.courier !== '通用快递') { 
@@ -906,17 +902,14 @@ export default function App() {
                  if (isSuccess) {
                      let rawList = result.data || result.list || result.traces || result.Traces || result.logisticsTraceDetailList || [];
                      if (!Array.isArray(rawList) && typeof rawList === 'object') rawList = rawList.list || rawList.traces || rawList.Traces || [];
-                     // Normalize
                      const list = rawList.map(item => ({ time: item.time || item.ftime || item.AcceptTime || item.time_stamp || Date.now(), status: item.status || item.context || item.desc || item.AcceptStation || "未知状态" }));
                      
-                     tracks = list; // Use fresh data
-                     // Update cache
+                     tracks = list; 
                      setLogisticsDataCache(prev => ({ ...prev, [order.id]: { loading: false, data: list, error: null } }));
                  }
             }
         } catch (err) {
             console.warn("Auto-fetch failed during copy reply:", err);
-            // Fallback to existing tracks if any, or don't update 'tracks' variable if it was empty/cache
         }
 
         showToast("正在生成话术...", "success");
@@ -924,7 +917,6 @@ export default function App() {
         const createMessageTask = async () => {
             let realTimeStatus = order.lastApiStatus; 
             
-            // Use the 'tracks' variable which is either fresh or cached
             if (tracks && Array.isArray(tracks) && tracks.length > 0) { 
                 const validData = tracks.filter(item => item && (item.time || item.ftime)); 
                 const sortedData = [...validData].sort((a, b) => parseLogisticsDate(b.time || b.ftime) - parseLogisticsDate(a.time || a.time)); 
@@ -932,7 +924,6 @@ export default function App() {
             } 
             
             const statusSimple = getSimplifiedStatus(realTimeStatus); 
-            // ... (Rest of existing logic for shortlink and message generation) ...
             let queryValue = order.trackingNumber.trim(); let queryLink;
             try { const shortCode = await DataService.getOrCreateShortLink(queryValue); queryLink = `${SHORT_LINK_BASE_URL}/${shortCode}`.replace('https://', '').replace('http://', ''); } catch (e) { console.warn("短链生成失败:", e.message); const safeToken = encodeToken(queryValue); queryLink = `${SHORT_LINK_BASE_URL}?q=${safeToken}`.replace('https://', '').replace('http://', ''); }
             let templateKey = 'TRANSPORT'; if (statusSimple === '待揽收') templateKey = 'WAIT_ACCEPT'; else if (statusSimple === '派件中') templateKey = 'DELIVERING'; else if (statusSimple === '已签收') templateKey = 'SIGN'; else if (statusSimple === '异常件') templateKey = 'ABNORMAL'; 
@@ -940,7 +931,6 @@ export default function App() {
             return message;
         };
         
-        // ... (Clipboard logic) ...
         if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && navigator.clipboard.write) {
             try { const textBlobPromise = createMessageTask().then(text => new Blob([text], { type: 'text/plain' })); const item = new ClipboardItem({ 'text/plain': textBlobPromise }); navigator.clipboard.write([item]).then(() => { showToast("复制成功"); if (navigator.vibrate) navigator.vibrate(200); }).catch(err => { createMessageTask().then(text => copyToClipboard(text)); }); return; } catch (e) {}
         }
@@ -962,7 +952,6 @@ export default function App() {
 
     const handleShowLogistics = (order) => { setViewingLogisticsOrder(order); fetchLogistics(order); };
     
-    // ... (Render logic) ...
     if (currentView === 'login') {
         return (
             <div className="min-h-screen min-h-[100dvh] flex flex-col items-center justify-center bg-black text-white p-6 relative overflow-hidden">
@@ -1152,7 +1141,6 @@ export default function App() {
                 )}
                 {viewingLogisticsOrder && (<div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4"><div className="bg-[#111] w-full max-w-md rounded-2xl overflow-hidden border border-white/10 shadow-2xl flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"><div className="p-5 border-b border-white/10 flex justify-between items-center bg-white/[0.02]"><div><div className="text-white font-bold text-lg mb-1">{viewingLogisticsOrder.recipientName}</div><div className="text-xs font-mono text-white/40">{viewingLogisticsOrder.trackingNumber}</div></div><button onClick={() => setViewingLogisticsOrder(null)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white"><X size={18}/></button></div><div className="flex-1 overflow-y-auto p-0 custom-scrollbar bg-black"><LogisticsTimeline order={viewingLogisticsOrder} logisticsDataCache={logisticsDataCache} themeColor={apiSettings.themeColor} /></div></div></div>)}
                 
-                {/* 修复: 编辑订单弹窗增加快递名称修改功能 */}
                 {showEditModal && (
                     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4">
                         <div className="bg-[#111] w-full max-w-lg rounded-2xl p-6 md:p-8 border border-white/10 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -1164,7 +1152,6 @@ export default function App() {
                                 <input value={newOrder.recipientName} onChange={e => setNewOrder({...newOrder, recipientName: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="收件人"/>
                                 <input value={newOrder.phone} onChange={e => setNewOrder({...newOrder, phone: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="手机号"/>
                                 <input value={newOrder.product} onChange={e => setNewOrder({...newOrder, product: e.target.value})} className="col-span-2 w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="商品名称" />
-                                {/* 调整布局：单号和快递名称各占一半，方便手动修改 */}
                                 <input value={newOrder.trackingNumber} onChange={handleTrackingNumberChange} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="运单号"/>
                                 <input value={newOrder.courier} onChange={e => setNewOrder({...newOrder, courier: e.target.value})} className="w-full p-3 bg-black border border-white/10 rounded-lg text-white" placeholder="快递名称 (自动识别)"/>
                             </div>
@@ -1180,7 +1167,6 @@ export default function App() {
         );
     }
 
-    // Public view
     return (
         <div className="w-full max-w-md mx-auto min-h-screen min-h-[100dvh] relative overflow-hidden flex flex-col">
             <AcidBackground themeColor={apiSettings.themeColor} mode={activeBackgroundMode} lowPowerMode={lowPowerMode} /><NoiseOverlay /><ClickEffects themeColor={apiSettings.themeColor} />{toast && <Toast message={toast.message} type={toast.type} />}
